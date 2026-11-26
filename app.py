@@ -236,12 +236,12 @@ JEV_MODELS = ["typesafe/jev-1.13", "~typesafe/jev-latest"]
 SEARCH_MODE_PER_SCHOLAR = "per_scholar"
 SEARCH_MODE_OVERALL = "overall"
 SEARCH_MODES = [
-    ("إجابات مخصصة لكل شيخ", SEARCH_MODE_PER_SCHOLAR),
-    ("أفضل إجابات مجمعة", SEARCH_MODE_OVERALL),
+    ("لكل عالم", SEARCH_MODE_PER_SCHOLAR),
+    ("الأفضل إجمالاً", SEARCH_MODE_OVERALL),
 ]
 SEARCH_MODES_EN = [
-    ("Answers per scholar", SEARCH_MODE_PER_SCHOLAR),
-    ("Top answers overall", SEARCH_MODE_OVERALL),
+    ("Per scholar", SEARCH_MODE_PER_SCHOLAR),
+    ("Best overall", SEARCH_MODE_OVERALL),
 ]
 
 # Verdicts for individual fatwas (binary relevance: answers-it or does-not-answer)
@@ -306,23 +306,17 @@ I18N: dict[str, dict[str, str]] = {
     "ar": {
         "title": "محرك البحث الفقهي — فتاوى كبار العلماء",
         "tagline_fmt": "{n:,} فتوى مفهرسة عبر {scholars} من كبار العلماء · بحث دلالي + إعادة ترتيب بميزان v3 Turbo + فحص الصلة بلَيا",
-        "theme_light": "☀️ نهار",
-        "theme_dark": "🌙 ليل",
-        "lang_btn": "🌐 English",
-        "settings_btn": "⚙ الإعدادات",
+        "theme_light": "نهار",
+        "theme_dark": "ليل",
+        "lang_btn": "English",
+        "settings_btn": "الإعدادات",
         "placeholder": "اكتب سؤالك هنا…",
-        "examples_label": "💡 أسئلة مقترحة للتجربة",
-        "examples_info": "اختر سؤالاً من القائمة لتعبئة حقل البحث وتجربة المحرك مباشرة",
-        "clear_btn": "مسح",
-        "adv_search_title": "⚙ خيارات البحث والعلماء",
-        "search_mode_label": "وضع البحث",
-        "search_mode_info": "اختر بين بحث مخصص لكل شيخ أو ترتيب مجمع",
-        "mode_per_scholar": "إجابات مخصصة لكل شيخ",
-        "mode_overall": "أفضل إجابات مجمعة",
-        "x_per_scholar_label": "عدد الإجابات لكل شيخ",
-        "show_n_label": "إجمالي النتائج المعروضة",
-        "scholars_label": "العلماء المشمولون في البحث",
-        "scholars_info": "اختر أي عدد من العلماء للبحث في فتاواهم",
+        "search_mode_label": "الترتيب",
+        "mode_per_scholar": "لكل عالم",
+        "mode_overall": "الأفضل إجمالاً",
+        "x_per_scholar_label": "النتائج لكل عالم",
+        "show_n_label": "عدد النتائج",
+        "scholars_label": "العلماء",
         "tab_results": "النتائج",
         "tab_pipeline": "المسار الزمني",
         "tab_debug": "التشخيص",
@@ -332,10 +326,10 @@ I18N: dict[str, dict[str, str]] = {
         "empty_failed": '<div class="fq-empty-sm">لم يعثر البحث على نتائج مطابقة.</div>',
         "loading_query": '<div class="fq-loading"><div class="fq-spin"></div><span>جاري البحث وتحليل الفتاوى الفقهية…</span></div>',
         "loading_results_title": "جاري الاسترجاع والتحليل…",
-        "sect_direct_answers": "🎯 إجابات مباشرة مؤكدة",
-        "sect_other_candidates": "🔍 نتائج إضافية ذات صلة",
-        "sect_all_candidates": "📋 نتائج البحث",
-        "best_match": "★ الأقرب للسؤال",
+        "sect_direct_answers": "إجابات مباشرة",
+        "sect_other_candidates": "نتائج أخرى ذات صلة",
+        "sect_all_candidates": "نتائج البحث",
+        "best_match": "الأقرب للسؤال",
         "question_label": "السؤال",
         "full_answer": "نص الإجابة كاملاً",
         "copy_answer": "نسخ الإجابة",
@@ -355,7 +349,7 @@ I18N: dict[str, dict[str, str]] = {
         "modal_comment_placeholder": "ملاحظة أو توضيح إضافي (اختياري)...",
         "modal_submit": "إرسال التقييم",
         "modal_cancel": "إلغاء",
-        "toast_success": "✅ جزاكم الله خيراً، تم تسجيل تقييمك بنجاح لدعم تدريب لَيا!",
+        "toast_success": "جزاكم الله خيراً، تم تسجيل تقييمك لتدريب لَيا.",
         "settings_title": "الإعدادات",
         "settings_sub": "تخصيص نماذج الذكاء الاصطناعي وحدود الاسترجاع والتصفية.",
         "filter_title": "تصفية النتائج بحسب الصلة",
@@ -365,23 +359,17 @@ I18N: dict[str, dict[str, str]] = {
     "en": {
         "title": "Fatwa Search — Multi-Scholar RAG",
         "tagline_fmt": "{n:,} fatwas indexed across {scholars} scholars · semantic retrieval + Mizan v3 Turbo rerank + Laya AI verification",
-        "theme_light": "☀️ Light",
-        "theme_dark": "🌙 Dark",
-        "lang_btn": "🌐 العربية",
-        "settings_btn": "⚙ Settings",
+        "theme_light": "Light",
+        "theme_dark": "Dark",
+        "lang_btn": "العربية",
+        "settings_btn": "Settings",
         "placeholder": "Type your question here…",
-        "examples_label": "💡 Suggested Questions",
-        "examples_info": "Select a question from the list to populate the search bar and test immediately",
-        "clear_btn": "Clear",
-        "adv_search_title": "⚙ Advanced Search & Scholars",
-        "search_mode_label": "Search Mode",
-        "search_mode_info": "Choose between independent search per scholar or overall top results",
-        "mode_per_scholar": "Answers per scholar",
-        "mode_overall": "Top answers overall",
+        "search_mode_label": "Ranking",
+        "mode_per_scholar": "Per scholar",
+        "mode_overall": "Best overall",
         "x_per_scholar_label": "Answers per scholar",
-        "show_n_label": "Total results to show",
-        "scholars_label": "Included Scholars / Sources",
-        "scholars_info": "Select any number of scholars to include in the search",
+        "show_n_label": "Results",
+        "scholars_label": "Scholars",
         "tab_results": "Results",
         "tab_pipeline": "Pipeline",
         "tab_debug": "Debug",
@@ -391,10 +379,10 @@ I18N: dict[str, dict[str, str]] = {
         "empty_failed": '<div class="fq-empty-sm">Search produced no matching results.</div>',
         "loading_query": '<div class="fq-loading"><div class="fq-spin"></div><span>Searching and synthesizing across scholarly fatwas…</span></div>',
         "loading_results_title": "Retrieving & analyzing…",
-        "sect_direct_answers": "🎯 Verified Direct Answers",
-        "sect_other_candidates": "🔍 Other Relevant Candidates",
-        "sect_all_candidates": "📋 Search Results",
-        "best_match": "★ Best match",
+        "sect_direct_answers": "Direct answers",
+        "sect_other_candidates": "Other related results",
+        "sect_all_candidates": "Search results",
+        "best_match": "Best match",
         "question_label": "Question",
         "full_answer": "Full answer",
         "copy_answer": "Copy answer",
@@ -414,7 +402,7 @@ I18N: dict[str, dict[str, str]] = {
         "modal_comment_placeholder": "Optional comment or explanation...",
         "modal_submit": "Submit Feedback",
         "modal_cancel": "Cancel",
-        "toast_success": "✅ Thank you! Your feedback has been recorded to train Laya.",
+        "toast_success": "Thanks. Your feedback was saved for retraining Laya.",
         "settings_title": "Settings",
         "settings_sub": "Configure AI features, models, retrieval pools and filters.",
         "filter_title": "Filter Verdicts",
@@ -540,7 +528,7 @@ def render_feedback_status(data_dir: Path | str, last_msg: str | None = None) ->
     return (
         f'<div class="fq-fb-status-bar">'
         f'{msg_html}'
-        f'<div class="fq-fb-count">📊 إجمالي العينات التدريبية المسجلة: <b>{count:,}</b> عينة (تُجمع لإعادة تدريب لَيا)</div>'
+        f'<div class="fq-fb-count">إجمالي العينات التدريبية المسجلة: <b>{count:,}</b> عينة (تُجمع لإعادة تدريب لَيا)</div>'
         f'</div>'
     )
 
@@ -1579,7 +1567,10 @@ class FatwaApp:
                 rerank_time = time.perf_counter() - t0_rerank
                 retrieved = pd.concat(all_retrieved_list, ignore_index=True) if all_retrieved_list else pd.DataFrame()
                 if reranked_parts:
+                    # Keep each scholar's quota, but order the combined list by
+                    # rerank score so "best match" really is the best match.
                     top_n = pd.concat(reranked_parts, ignore_index=True)
+                    top_n = top_n.sort_values("reranker_score", ascending=False, kind="stable").reset_index(drop=True)
                     top_n["rerank_rank"] = np.arange(1, len(top_n) + 1)
                 else:
                     top_n = pd.DataFrame()
@@ -1825,7 +1816,7 @@ def render_consensus_box(consensus: ConsensusVerdict | None, summary: str | None
             badge_lbl = CONSENSUS_LABELS_AR.get(consensus.consensus, consensus.consensus)
         else:
             badge_lbl = CONSENSUS_LABELS.get(consensus.consensus, consensus.consensus)
-        icon = CONSENSUS_ICONS.get(consensus.consensus, "⚖")
+        icon = CONSENSUS_ICONS.get(consensus.consensus, "")
         conf_str = f" · confidence {_fmt_conf(consensus.confidence)}" if (lang == "en" and consensus.confidence is not None) else (
             f" · مستوى الثقة {_fmt_conf(consensus.confidence)}" if consensus.confidence is not None else ""
         )
@@ -1876,7 +1867,7 @@ def render_query_panel(
 
     if consensus_verdict and consensus_verdict.consensus != "unknown":
         cls_name = consensus_badge_class(consensus_verdict.consensus)
-        icon = CONSENSUS_ICONS.get(consensus_verdict.consensus, "⚖")
+        icon = CONSENSUS_ICONS.get(consensus_verdict.consensus, "")
         c_lbl = CONSENSUS_LABELS_AR.get(consensus_verdict.consensus, consensus_verdict.consensus) if lang == "ar" else CONSENSUS_LABELS.get(consensus_verdict.consensus, consensus_verdict.consensus)
         chips.append(f'<span class="fq-pill {cls_name}">{icon} {c_lbl}</span>')
 
@@ -1895,7 +1886,7 @@ def render_query_panel(
         rows.append('<div class="fq-qchips">' + "".join(chips) + "</div>")
 
     if errors:
-        err_title = f"⚠ {len(errors)} مشكلة" if lang == "ar" else f"⚠ {len(errors)} issue{'s' if len(errors) != 1 else ''}"
+        err_title = f"{len(errors)} مشكلة" if lang == "ar" else f"{len(errors)} issue{'s' if len(errors) != 1 else ''}"
         err_hint = "تفاصيل الخطأ الكاملة في تبويب <b>التشخيص</b>." if lang == "ar" else "Full traceback is in the <b>Debug</b> tab."
         items = "".join(f"<li>{esc(e)}</li>" for e in errors)
         rows.append(
@@ -2022,7 +2013,7 @@ def fatwa_card(
         )
         verdict_badge_html = f'<span class="fq-badge {v_cls}"><b>{v_icon}</b> {v_text}</span>'
 
-    scholar_badge_html = f'<span class="fq-scholar-badge">👤 {scholar_label}</span>'
+    scholar_badge_html = f'<span class="fq-scholar-badge">{scholar_label}</span>'
 
     q_label = I18N[lang]["question_label"]
     ans_label = I18N[lang]["full_answer"]
@@ -2042,8 +2033,8 @@ def fatwa_card(
           </div>
         </div>
         <div class="fq-card-votes">
-          <button type="button" class="fq-vote-btn up" onclick="openFeedbackModal('{fid}', 'up', '{title_esc}')" title="👍">👍</button>
-          <button type="button" class="fq-vote-btn down" onclick="openFeedbackModal('{fid}', 'down', '{title_esc}')" title="👎">👎</button>
+          <button type="button" class="fq-vote-btn up" onclick="openFeedbackModal('{fid}', 'up', '{title_esc}')" title="Answers it" aria-label="Answers it"></button>
+          <button type="button" class="fq-vote-btn down" onclick="openFeedbackModal('{fid}', 'down', '{title_esc}')" title="Does not answer" aria-label="Does not answer"></button>
         </div>
       </header>
       <div class="fq-qblock"><div class="fq-label">{q_label}</div>
@@ -2321,20 +2312,33 @@ footer { display:none !important; }
 #fq-query, #fq-query *:not(button):not(svg):not(path) { background:transparent !important; border:none !important; box-shadow:none !important; }
 #fq-search-wrap, #fq-search-wrap .styler { --block-background-fill:transparent; }
 #fq-search-wrap .styler { background:transparent !important; }
+#fq-search-wrap > div, #fq-search-wrap .block, #fq-search-wrap label { border:none !important; box-shadow:none !important; background:transparent !important; }
 #fq-query textarea { font-family:var(--fq-ar) !important; font-size:1.35rem !important; line-height:1.7 !important;
   padding:12px 16px !important; background:transparent !important; border:none !important; box-shadow:none !important; }
 #fq-query textarea::placeholder { font-family:var(--fq-sans); font-size:1rem; color:var(--fq-muted); }
 #fq-query button { background:var(--fq-accent) !important; color:#fff !important; border-radius:14px !important; }
-#fq-examples { display:flex !important; gap:10px !important; margin:12px 2px 0; align-items:flex-end; }
-#fq-examples .fq-ex-dropdown { flex:1 1 auto !important; min-width:0 !important; }
-#fq-examples .fq-ex-clear { flex:0 0 auto !important; height:42px !important; padding:0 18px !important; border-radius:12px !important; margin-bottom:2px; }
-.fq-ex-label { font-size:.78rem; color:var(--fq-muted); text-transform:uppercase; letter-spacing:.08em; font-weight:700; padding-right:4px; }
-.fq-ex { border-radius:999px !important; background:var(--fq-surface) !important; border:1px solid var(--fq-line) !important;
-  color:var(--fq-ink) !important; font-weight:500 !important; padding:6px 14px !important; font-size:.88rem !important; box-shadow:none !important; }
-.fq-ex:hover { border-color:var(--fq-accent) !important; background:var(--fq-accent-soft) !important; }
-
-#fq-mode-panel { background:var(--fq-surface); border:1px solid var(--fq-line); border-radius:18px;
-  padding:14px 18px; margin-top:12px; box-shadow:var(--fq-shadow); }
+/* Search options strip: sits directly under the search box, no container of its own */
+#fq-controls { margin:14px 6px 0 !important; gap:28px !important; align-items:flex-start !important;
+  flex-wrap:wrap !important; background:transparent !important; border:none !important; }
+#fq-controls > div, #fq-controls .block, #fq-controls .form { background:transparent !important; border:none !important;
+  box-shadow:none !important; padding:0 !important; }
+#fq-controls [data-testid="block-info"], #fq-controls .block-info, #fq-controls label > span:first-child:not(.ml-2) {
+  font-size:.8rem !important; font-weight:600 !important; color:var(--fq-muted) !important; margin-bottom:6px !important; }
+#fq-mode .wrap, #fq-scholars .wrap { gap:6px !important; flex-wrap:wrap !important; }
+#fq-mode .wrap label, #fq-scholars .wrap label { position:relative; margin:0 !important; padding:6px 14px !important;
+  border-radius:999px !important; border:1px solid var(--fq-line) !important; background:var(--fq-surface) !important;
+  color:var(--fq-muted) !important; font-size:.86rem !important; font-weight:600 !important; box-shadow:none !important;
+  cursor:pointer; transition:background .15s, color .15s, border-color .15s; }
+#fq-mode .wrap label input, #fq-scholars .wrap label input { position:absolute; opacity:0; width:1px; height:1px; pointer-events:none; }
+#fq-mode .wrap label span, #fq-scholars .wrap label span { margin:0 !important; padding:0 !important; }
+#fq-mode .wrap label:hover, #fq-scholars .wrap label:hover { border-color:var(--fq-accent) !important; color:var(--fq-ink) !important; }
+#fq-mode .wrap label.selected, #fq-mode .wrap label:has(input:checked),
+#fq-scholars .wrap label.selected, #fq-scholars .wrap label:has(input:checked) {
+  background:var(--fq-accent-soft) !important; border-color:var(--fq-accent) !important; color:var(--fq-accent-ink) !important; }
+#fq-mode .wrap label:has(input:focus-visible), #fq-scholars .wrap label:has(input:focus-visible) {
+  outline:2px solid var(--fq-accent); outline-offset:2px; }
+#fq-controls .fq-count { min-width:180px !important; max-width:220px; }
+#fq-controls .fq-count input[type=number] { background:var(--fq-surface) !important; border:1px solid var(--fq-line) !important; border-radius:8px !important; }
 
 /* ---- generic ---- */
 .fq-flat, .fq-flat.block { border:none !important; background:transparent !important; box-shadow:none !important; padding:0 !important; }
@@ -2400,10 +2404,15 @@ footer { display:none !important; }
 .fq-card-votes { display:flex; gap:6px; align-items:center; margin-left:auto; flex-shrink:0; }
 .fq-vote-btn { width:36px; height:36px; border-radius:50%; border:1px solid var(--fq-line);
   background:var(--fq-surface); color:var(--fq-ink); display:inline-flex; align-items:center; justify-content:center;
-  cursor:pointer; font-size:1.1rem; transition:all 0.2s cubic-bezier(0.4, 0, 0.2, 1); box-shadow:0 1px 2px rgba(0,0,0,0.04); }
+  cursor:pointer; color:var(--fq-muted); transition:all 0.2s cubic-bezier(0.4, 0, 0.2, 1); box-shadow:0 1px 2px rgba(0,0,0,0.04); }
 .fq-vote-btn:hover { transform:scale(1.12); }
 .fq-vote-btn.up:hover { background:var(--fq-good-soft); border-color:var(--fq-good); color:var(--fq-good); }
 .fq-vote-btn.down:hover { background:var(--fq-bad-soft); border-color:var(--fq-bad); color:var(--fq-bad); }
+.fq-vote-btn { display:inline-flex !important; padding:0 !important; }
+.fq-vote-btn::before { content:"" !important; display:block !important; flex:none !important; width:17px !important; min-width:17px !important; height:17px !important; margin:0 !important; background:currentColor !important;
+  -webkit-mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M7 10v11H3V10h4zm0 0 4-8a2.5 2.5 0 0 1 2.5 2.5V8h5.3a2 2 0 0 1 2 2.3l-1.3 8.5a2 2 0 0 1-2 1.7H7'/></svg>") center/contain no-repeat; mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M7 10v11H3V10h4zm0 0 4-8a2.5 2.5 0 0 1 2.5 2.5V8h5.3a2 2 0 0 1 2 2.3l-1.3 8.5a2 2 0 0 1-2 1.7H7'/></svg>") center/contain no-repeat; }
+.fq-vote-btn.down::before { transform:rotate(180deg); }
+.fq-vote-btn:focus-visible { outline:2px solid var(--fq-accent); outline-offset:2px; }
 
 .fq-qblock { margin:14px 0 10px; }
 .fq-question { font-size:1.2rem; line-height:1.65; color:var(--fq-ink); text-align:right; }
@@ -2451,9 +2460,6 @@ footer { display:none !important; }
 .fq-section-header { display:flex; align-items:center; gap:10px; margin:20px 0 12px; padding-bottom:6px; border-bottom:1px solid var(--fq-line); }
 .fq-section-header.fq-sect-other { margin-top:32px; }
 .fq-sect-title { font-size:1.15rem; font-weight:800; color:var(--fq-ink); margin:0; }
-
-/* ---- advanced search accordion ---- */
-#fq-adv-search { margin-top: 12px; background: transparent; border: 1px solid var(--fq-line); border-radius: 16px; }
 
 /* ---- feedback modal overlay & dialog ---- */
 .fq-modal-overlay {
@@ -2542,42 +2548,6 @@ LOADING_QUERY = (
 )
 LOADING_RESULTS = '<div class="fq-empty"><div class="fq-spin" style="margin:0 auto 12px"></div><div class="fq-empty-title">Retrieving & analyzing…</div></div>'
 
-EXAMPLE_QUERIES = [
-    # الطهارة والصلاة
-    "ما حكم صلاة الجماعة في المسجد للرجال وهل هي فرض عين؟",
-    "كيف أكفر عن يمينٍ حلفتها ثم حنثت فيها؟",
-    "هل صلاة الوتر واجبة أم سنة مؤكدة وما هو وقتها وصفتها؟",
-    "ما حكم من نسي التشهد الأول في الصلاة وسجد للسهو؟",
-    "ما حكم الوضوء مع وجود طلاء الأظافر أو الحناء على اليدين؟",
-    "هل لمس المرأة الأجنبية ينقض الوضوء بشهوة أو بدون شهوة؟",
-    "ما حكم تارك الصلاة تهاوناً وكسلاً عند جمهور أهل العلم؟",
-    "هل يجوز قصر الصلاة وجمعها للمسافر بمجرد خروجه من البلد؟",
-    # الزكاة والصيام
-    "هل يجوز إخراج زكاة الفطر نقداً أم يجب إخراجها قوتاً وطعاماً؟",
-    "ما حكم زكاة الذهب والحلي المعد للاستعمال والزينة الشخصية؟",
-    "هل بخاخ الربو وقطرة العين والأذن تفسد صيام رمضان؟",
-    "ما حكم من أكل أو شرب ناسياً في نهار رمضان هل يقضي؟",
-    "هل يجوز صيام ست من شوال قبل قضاء ما فات من أيام رمضان؟",
-    # الحج والعمرة
-    "ما حكم من ترك طواف الوداع في الحج لعذر أو لجهل بحكمه؟",
-    "هل يجوز للمرأة السفر لأداء الحج أو العمرة بدون محرم؟",
-    "ما هي صفة التمتع في الحج وما الفدية الواجبة على المتمتع؟",
-    # المعاملات المالية والمسائل المعاصرة
-    "ما حكم شراء الذهب والفضة عبر الإنترنت بالبطاقة الائتمانية؟",
-    "ما حكم التأمين التجاري على السيارات والتأمين الصحي والتكافلي؟",
-    "ما حكم التداول بالعملات الرقمية والمشفرة (كالبيتكوين)؟",
-    "ما حكم العمل في البنوك الربوية في وظائف الحراسة أو البرمجة؟",
-    # الأسرة والأحكام العامة
-    "هل يشترط إذن الولي ورضاه في نكاح الثيب والبكر؟",
-    "ما حكم قراءة القرآن للحائض والنفساء من المصحف أو الهاتف؟",
-    "ما حكم الرقية الشرعية وأخذ الأجرة عليها؟",
-    # أسئلة باللغة الإنجليزية (لتجربة الترجمة والبحث العابر للغات)
-    "What is the ruling on paying zakat on jewelry worn by women?",
-    "Is it permissible to combine prayers due to severe rain or illness?",
-    "What should a person do if they forgot a prostration in prayer?",
-]
-
-
 # ---------------------------------------------------------------------------
 # UI Construction
 # ---------------------------------------------------------------------------
@@ -2616,7 +2586,7 @@ def build_ui(app: FatwaApp) -> gr.Blocks:
                 modal_comment_placeholder: "ملاحظة أو توضيح إضافي (اختياري)...",
                 modal_submit: "إرسال التقييم",
                 modal_cancel: "إلغاء",
-                toast_success: "✅ جزاكم الله خيراً، تم تسجيل تقييمك بنجاح لدعم تدريب لَيا!",
+                toast_success: "جزاكم الله خيراً، تم تسجيل تقييمك لتدريب لَيا.",
               },
               en: {
                 modal_up_title: "Confirm Direct Answer",
@@ -2626,7 +2596,7 @@ def build_ui(app: FatwaApp) -> gr.Blocks:
                 modal_comment_placeholder: "Optional comment or explanation...",
                 modal_submit: "Submit Feedback",
                 modal_cancel: "Cancel",
-                toast_success: "✅ Thank you! Your feedback has been recorded to train Laya.",
+                toast_success: "Thanks. Your feedback was saved for retraining Laya.",
               }
             };
 
@@ -2728,7 +2698,7 @@ def build_ui(app: FatwaApp) -> gr.Blocks:
                 var btn = document.getElementById('fq-theme-btn');
                 if (btn) {
                     var b = btn.tagName === 'BUTTON' ? btn : (btn.querySelector('button') || btn);
-                    b.innerText = isDark ? "☀️ Light" : "🌙 Dark";
+                    b.innerText = isDark ? "Light" : "Dark";
                 }
             }
             if (document.readyState === 'loading') {
@@ -2748,8 +2718,8 @@ def build_ui(app: FatwaApp) -> gr.Blocks:
                 render_brand_html("ar", n_fatwas, len(available_scholars)),
                 elem_classes="fq-flat",
             )
-            lang_btn = gr.Button("🌐 English", elem_id="fq-lang-btn", size="sm", scale=0)
-            theme_btn = gr.Button("☀️ Light", elem_id="fq-theme-btn", size="sm", scale=0)
+            lang_btn = gr.Button("English", elem_id="fq-lang-btn", size="sm", scale=0)
+            theme_btn = gr.Button("Light", elem_id="fq-theme-btn", size="sm", scale=0)
             settings_btn = gr.Button(I18N["ar"]["settings_btn"], elem_id="fq-settings-btn", size="sm", scale=0)
 
         # ---- search box ----------------------------------------------------
@@ -2766,48 +2736,33 @@ def build_ui(app: FatwaApp) -> gr.Blocks:
                 elem_id="fq-query",
             )
 
-        # ---- example queries (dropdown) ------------------------------------
-        with gr.Row(elem_id="fq-examples"):
-            example_dropdown = gr.Dropdown(
-                choices=EXAMPLE_QUERIES,
-                value=None,
-                label=I18N["ar"]["examples_label"],
-                scale=5,
-                allow_custom_value=False,
-                filterable=True,
-                elem_classes="fq-ex-dropdown",
+        # ---- search options: a single compact strip under the search box ----
+        with gr.Row(elem_id="fq-controls", equal_height=False):
+            search_mode = gr.Radio(
+                choices=SEARCH_MODES,
+                value=SEARCH_MODE_PER_SCHOLAR,
+                label=I18N["ar"]["search_mode_label"],
+                scale=0,
+                min_width=260,
+                elem_id="fq-mode",
             )
-            clear_btn = gr.Button(I18N["ar"]["clear_btn"], size="sm", elem_classes=["fq-ex", "fq-ex-clear"], scale=1)
-
-        # ---- mode & scholar selectors ----
-        with gr.Accordion(I18N["ar"]["adv_search_title"], open=False, elem_id="fq-adv-search") as adv_search:
-            with gr.Group(elem_id="fq-mode-panel"):
-                with gr.Row():
-                    search_mode = gr.Radio(
-                        choices=SEARCH_MODES,
-                        value=SEARCH_MODE_PER_SCHOLAR,
-                        label=I18N["ar"]["search_mode_label"],
-                        info=I18N["ar"]["search_mode_info"],
-                        scale=1,
-                    )
-                    with gr.Column(scale=1):
-                        x_per_scholar = gr.Slider(
-                            1, 5, value=DEFAULT_X_PER_SCHOLAR, step=1,
-                            label=I18N["ar"]["x_per_scholar_label"],
-                            visible=True,
-                        )
-                        show_n = gr.Slider(
-                            1, 20, value=DEFAULT_SHOW_N, step=1,
-                            label=I18N["ar"]["show_n_label"],
-                            visible=False,
-                        )
-                with gr.Row():
-                    selected_scholars = gr.CheckboxGroup(
-                        choices=available_scholars,
-                        value=available_scholars,
-                        label=I18N["ar"]["scholars_label"],
-                        info=I18N["ar"]["scholars_info"],
-                    )
+            selected_scholars = gr.CheckboxGroup(
+                choices=available_scholars,
+                value=available_scholars,
+                label=I18N["ar"]["scholars_label"],
+                scale=1,
+                elem_id="fq-scholars",
+            )
+            x_per_scholar = gr.Slider(
+                1, 5, value=DEFAULT_X_PER_SCHOLAR, step=1,
+                label=I18N["ar"]["x_per_scholar_label"],
+                visible=True, scale=0, min_width=190, elem_classes="fq-count",
+            )
+            show_n = gr.Slider(
+                1, 20, value=DEFAULT_SHOW_N, step=1,
+                label=I18N["ar"]["show_n_label"],
+                visible=False, scale=0, min_width=190, elem_classes="fq-count",
+            )
 
         query_info = gr.HTML(I18N["ar"]["empty_query"], elem_classes="fq-flat")
 
@@ -3027,18 +2982,6 @@ def build_ui(app: FatwaApp) -> gr.Blocks:
 
         run_kw = dict(fn=search, inputs=inputs, outputs=outputs, show_progress="full")
         query.submit(**run_kw)
-        example_dropdown.input(
-            lambda q: q or "", inputs=example_dropdown, outputs=query, show_progress="hidden"
-        ).then(**run_kw)
-
-        clear_btn.click(
-            lambda l: (
-                "", None, I18N[l]["empty_query"], EMPTY_PIPELINE, EMPTY_TABLE, EMPTY_TABLE, render_empty_results(l), "", {}
-            ),
-            inputs=[lang_state],
-            outputs=[query, example_dropdown] + outputs,
-            show_progress="hidden",
-        )
 
         def handle_modal_feedback(search_state: dict[str, Any], payload_str: str) -> None:
             if not payload_str or not search_state:
@@ -3073,7 +3016,7 @@ def build_ui(app: FatwaApp) -> gr.Blocks:
                 const btn = document.getElementById('fq-theme-btn');
                 if (btn) {
                     const b = btn.tagName === 'BUTTON' ? btn : (btn.querySelector('button') || btn);
-                    b.innerText = isDarkNow ? "☀️ Light" : "🌙 Dark";
+                    b.innerText = isDarkNow ? "Light" : "Dark";
                 }
             }""",
         )
@@ -3092,17 +3035,13 @@ def build_ui(app: FatwaApp) -> gr.Blocks:
                 gr.update(value=I18N[new_l]["lang_btn"]),
                 gr.update(value=render_brand_html(new_l, n_fatwas, len(available_scholars))),
                 gr.update(placeholder=I18N[new_l]["placeholder"], rtl=(new_l == "ar")),
-                gr.update(label=I18N[new_l]["examples_label"]),
-                gr.update(value=I18N[new_l]["clear_btn"]),
-                gr.update(label=I18N[new_l]["adv_search_title"]),
                 gr.update(
                     label=I18N[new_l]["search_mode_label"],
-                    info=I18N[new_l]["search_mode_info"],
                     choices=SEARCH_MODES if new_l == "ar" else SEARCH_MODES_EN,
                 ),
                 gr.update(label=I18N[new_l]["x_per_scholar_label"]),
                 gr.update(label=I18N[new_l]["show_n_label"]),
-                gr.update(label=I18N[new_l]["scholars_label"], info=I18N[new_l]["scholars_info"]),
+                gr.update(label=I18N[new_l]["scholars_label"]),
                 gr.update(value=I18N[new_l]["settings_btn"]),
                 gr.update(
                     label=I18N[new_l]["filter_title"],
@@ -3122,9 +3061,6 @@ def build_ui(app: FatwaApp) -> gr.Blocks:
                 lang_btn,
                 brand_html,
                 query,
-                example_dropdown,
-                clear_btn,
-                adv_search,
                 search_mode,
                 x_per_scholar,
                 show_n,

@@ -8,7 +8,18 @@ A retrieval pipeline over **39,646 Arabic fatwas** from four major Saudi scholar
 [![HF Dataset](https://img.shields.io/badge/%F0%9F%A4%97%20dataset-binbaz__fatwas__rag-yellow)](https://huggingface.co/datasets/ZenoAbderrahim/binbaz_fatwas_rag)
 [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/AbderrahimZineddineEsi/BinBaz-RAG/blob/main/notebooks/02_run_on_colab.ipynb)
 
-![Search results judged by the local Laya model](docs/images/demo-results.png)
+![Search results for "ما حكم التأمين على السيارات؟" (is car insurance permissible?): Laya judges 6 of 8 fatwas as answering it and 2 as not](docs/images/demo-results.png)
+
+<table>
+  <tr>
+    <td width="68%" valign="top"><img src="docs/images/demo-pipeline.png" alt="Pipeline tab with per-stage timings"></td>
+    <td width="32%" valign="top"><img src="docs/images/demo-settings.png" alt="Settings drawer"></td>
+  </tr>
+  <tr>
+    <td valign="top"><b>Pipeline tab</b>: per-stage timings for the same query. The 53 s rerank comes from running on a 3 GB GTX 1050 laptop GPU (80 long fatwas, up to 2,048 tokens each), a hardware limit rather than a property of the pipeline.</td>
+    <td valign="top"><b>Settings</b>: the local judge is on by default; cloud LLM features are off until you enable them.</td>
+  </tr>
+</table>
 
 <details>
 <summary>With the optional AI features on (scholar consensus + comparative summary)</summary>
@@ -33,7 +44,7 @@ A retrieval pipeline over **39,646 Arabic fatwas** from four major Saudi scholar
 | Reranking | Cross-encoder [ALJIACHI/Mizan-Rerank-v3-Turbo](https://huggingface.co/ALJIACHI/Mizan-Rerank-v3-Turbo) (ModernBERT) |
 | Fine-tuning | [`laya`](https://pypi.org/project/laya/) decision models (mmBERT encoder), PyTorch, DDP/`torchrun`-ready training notebook, scikit-learn metrics |
 | LLMs (optional) | Google Gemini (`google-genai`), OpenRouter (GPT-4o, DeepSeek, Claude, JEV Decisions API), structured JSON outputs with Pydantic |
-| App | Gradio 5, custom HTML/CSS cards, RTL Arabic support, light/dark themes |
+| App | Gradio (tested on 6.17), custom HTML/CSS cards, RTL Arabic support, light/dark themes |
 | Data & infra | pandas, Hugging Face Hub (dataset + model hosting, auto-download), Kaggle GPU notebooks, Google Colab |
 
 ## How It Works
