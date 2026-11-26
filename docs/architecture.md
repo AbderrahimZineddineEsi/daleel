@@ -4,7 +4,7 @@ How the multi-scholar fatwa search and AI consensus works, and why it is built t
 
 ## 1. Overview
 
-A query passes through up to five stages. Retrieval and reranking are local and require no API keys; the LLM stages (query rewrite, per-fatwa judge, consensus classification, and comparative summary) are modular and optional.
+A query passes through up to six stages. Retrieval, reranking and the default relevance judge (a fine-tuned Laya model) run locally and need no API keys. The LLM stages (query rewrite, consensus classification and comparative summary) are modular and optional.
 
 ```mermaid
 flowchart TD
@@ -12,9 +12,9 @@ flowchart TD
     RW --> M{Search Mode}
     M -->|Mode 1: X per scholar| S1[Retrieve top-K candidates per scholar<br/>Qwen3-Embedding-0.6B]
     M -->|Mode 2: Top X overall| S2[Retrieve top-K candidates across all selected scholars<br/>Qwen3-Embedding-0.6B]
-    S1 --> R1[Rerank candidates per scholar<br/>Mizan-Rerank-V2]
-    S2 --> R2[Rerank global pool<br/>Mizan-Rerank-V2]
-    R1 --> J{{Judge each result<br/>Gemini / JEV / OpenRouter, optional}}
+    S1 --> R1[Rerank candidates per scholar<br/>Mizan-Rerank-v3-Turbo]
+    S2 --> R2[Rerank global pool<br/>Mizan-Rerank-v3-Turbo]
+    R1 --> J{{Judge each result<br/>Fine-tuned Laya, local default; Gemini / OpenRouter optional}}
     R2 --> J
     J --> CS{{Consensus Classification<br/>Gemini or JEV, optional}}
     J --> SM{{Comparative Summary<br/>Gemini only, optional}}
@@ -27,8 +27,8 @@ flowchart TD
 | **Rewrite (optional)** | Converts any language or colloquial dialect into a canonical Arabic search query. | `gemini-2.5-flash` |
 | **Retrieve (Mode 1)** | Encodes the query and takes the top cosine candidates independently for each selected scholar. | `Qwen/Qwen3-Embedding-0.6B` |
 | **Retrieve (Mode 2)** | Encodes the query and takes the top cosine candidates across the unified multi-scholar pool. | `Qwen/Qwen3-Embedding-0.6B` |
-| **Rerank** | Cross-encoder rescores each (query, fatwa) pair and orders candidate fatwas. | `ALJIACHI/Mizan-Rerank-V2` |
-| **Judge (optional)** | Labels each shown result `answers-it`, `related-only`, or `unrelated` with a grounded answer quote. | Gemini, or JEV (`typesafe/jev-1.13`) |
+| **Rerank** | Cross-encoder rescores each (query, fatwa) pair and orders candidate fatwas. | `ALJIACHI/Mizan-Rerank-v3-Turbo` |
+| **Judge** | Labels each shown result `answers-it` or `does-not-answer`. | Fine-tuned Laya (`ZenoAbderrahim/laya-multilingual-fatwa-relevance`), local; Gemini, OpenRouter or JEV as alternatives |
 | **Consensus (optional)** | Classifies whether retrieved scholars agree (`agree`), partially agree (`partially-agree`), or diverge (`disagree`). | Gemini or JEV |
 | **Summary (optional)** | Synthesizes an objective Arabic summary comparing the scholars' positions with attribution. | Gemini |
 
@@ -36,18 +36,18 @@ flowchart TD
 
 ## 2. Multi-Scholar Corpus
 
-The expanded multi-scholar corpus totals **40,062 cleaned, indexed fatwas** from authoritative Sunni/Salafi scholars and official Saudi bodies:
+The cleaned corpus holds **40,062 fatwas** from seven sources. The app indexes the **four largest (39,646 fatwas)**. The three smallest sources are kept in the dataset but excluded from search, because a few hundred fatwas or fewer is too little coverage to answer most questions (see `INCLUDED_SCHOLARS` in `app.py`):
 
-| Scholar / Source | Fatwas | Origin / Provenance |
-| --- | --- | --- |
-| **Sheikh Abdulaziz ibn Baz** | 19,727 | Official portal `binbaz.org.sa` |
-| **Sheikh Muhammad ibn Saalih al-Uthaymeen** | 9,119 | Official fatwas archive `ibnothaymeen.com` |
-| **Al-Lajnah Ad-Da'imah lil-Ifta / Council of Senior Scholars** | 9,086 | General Presidency of Scholarly Research and Ifta (`alifta.gov.sa`) |
-| **Sheikh Saleh Al-Fawzan** | 1,714 | Official lessons & rulings archive |
-| **Sheikh Abdullah al-Manee'** | 233 | Council of Senior Scholars (`alifta.gov.sa`) |
-| **Sheikh Abdulaziz Aal ash-Sheikh** | 135 | Grand Mufti corner (`alifta.gov.sa`) |
-| **Sheikh Saleh bin Humaid** | 48 | Council of Senior Scholars (`alifta.gov.sa`) |
-| **Total** | **40,062** | Unified master index (`multi_scholar_clean.csv`) |
+| Scholar / Source | Fatwas | Origin / Provenance | Indexed |
+| --- | --- | --- | :---: |
+| **Sheikh Abdulaziz ibn Baz** | 19,727 | Official portal `binbaz.org.sa` | yes |
+| **Sheikh Muhammad ibn Saalih al-Uthaymeen** | 9,119 | Official fatwas archive `ibnothaymeen.com` | yes |
+| **Al-Lajnah Ad-Da'imah lil-Ifta / Council of Senior Scholars** | 9,086 | General Presidency of Scholarly Research and Ifta (`alifta.gov.sa`) | yes |
+| **Sheikh Saleh Al-Fawzan** | 1,714 | Official lessons & rulings archive | yes |
+| **Sheikh Abdullah al-Manee'** | 233 | Council of Senior Scholars (`alifta.gov.sa`) | excluded |
+| **Sheikh Abdulaziz Aal ash-Sheikh** | 135 | Grand Mufti corner (`alifta.gov.sa`) | excluded |
+| **Sheikh Saleh bin Humaid** | 48 | Council of Senior Scholars (`alifta.gov.sa`) | excluded |
+| **Total** | **40,062** | Unified master index (`multi_scholar_clean.csv`) | 39,646 |
 
 ### Preprocessing & Corrections:
 - **Uthaymeen Title Extraction:** Resolved a major scraping flaw in raw corpora where ~90% of fatwa titles were generic hierarchy breadcrumbs (e.g. `الطهارة >> المياه`), while the specific question/ruling title was stored in category metadata. The cleaning pipeline extracts the specific title to anchor semantic embeddings.
@@ -87,6 +87,6 @@ When multiple scholars' fatwas are retrieved, users frequently want to know: *Do
 
 ## 5. Hardware & Scalability
 
-- **Unified In-Memory Index:** At 40,062 × 1,024 floats, the normalized float32 embedding matrix is approximately 164 MB. Cosine similarity against this matrix takes under **4 ms** on a modern CPU, eliminating the need or overhead of external vector databases.
-- **Reranker Memory Footprint:** `ALJIACHI/Mizan-Rerank-V2` peaks at ~2.2 GB VRAM on GPU (running comfortably on laptop GPUs like a GTX 1050 with batch size 16).
+- **Unified In-Memory Index:** At ~40K × 1,024 floats, the normalized float32 embedding matrix is about 160 MB. A single matrix multiply over it takes milliseconds, so an external vector database would add complexity without a speed benefit at this scale.
+- **Reranker Memory Footprint:** `ALJIACHI/Mizan-Rerank-v3-Turbo` (149M-parameter ModernBERT) needs roughly 0.6 GB of VRAM, so it fits next to the Laya judge on a 3 GB laptop GPU such as a GTX 1050.
 - **Graceful Asset Fallback:** The application seamlessly falls back to the Bin Baz base corpus if the new multi-scholar `.pt` embeddings have not yet been downloaded, ensuring zero-downtime development and testing.

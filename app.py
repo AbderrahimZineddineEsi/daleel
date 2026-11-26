@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import ast
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 import functools
 import json
 import os
@@ -88,12 +89,29 @@ BINBAZ_DATA_FILES = [
 ]
 DATA_FILES = MULTI_SCHOLAR_DATA_FILES
 
+# Scholars (exact values of the `source` column) that are searchable/displayed.
+# Smaller sources are excluded because their corpora are too small:
+# Abdullah al-Manee (233 fatwas), Abdulaziz Aal ash-Sheikh (135), Saleh bin Humaid (48).
+# Re-enable any of them by adding their `source` name here. Filtering happens at
+# load time only; data files and embeddings on disk are untouched.
+INCLUDED_SCHOLARS = ["Ibn Baz", "Ibn Uthaymeen", "Al-Lajnah Ad-Daimah", "Saleh Al-Fawzan"]
+
 EMBEDDER_MODEL_NAME = "Qwen/Qwen3-Embedding-0.6B"
-RERANKER_MODEL_NAME = "ALJIACHI/Mizan-Rerank-V2"
+RERANKER_MODEL_NAME = "ALJIACHI/Mizan-Rerank-v3-Turbo"
 
 EMBEDDER_MAX_SEQ_LENGTH = 1024
-RERANKER_MAX_LENGTH = 1024
+RERANKER_MAX_LENGTH = 2048
 RERANKER_BATCH_SIZE = 16
+
+# ModernBERT compatibility on older GPUs (Pascal capability < 7.0 such as GTX 1050/1060)
+if hasattr(torch, "_dynamo"):
+    try:
+        if torch.cuda.is_available() and torch.cuda.get_device_capability()[0] < 7:
+            torch._dynamo.config.disable = True
+        else:
+            torch._dynamo.config.suppress_errors = True
+    except Exception:
+        pass
 
 DEFAULT_RETRIEVE_K = 20
 MAX_RETRIEVE_K = 200
@@ -218,31 +236,35 @@ JEV_MODELS = ["typesafe/jev-1.13", "~typesafe/jev-latest"]
 SEARCH_MODE_PER_SCHOLAR = "per_scholar"
 SEARCH_MODE_OVERALL = "overall"
 SEARCH_MODES = [
-    ("X إجابة لكل شيخ (منفصلة)", SEARCH_MODE_PER_SCHOLAR),
-    ("أفضل X إجابات مجمعة", SEARCH_MODE_OVERALL),
+    ("إجابات مخصصة لكل شيخ", SEARCH_MODE_PER_SCHOLAR),
+    ("أفضل إجابات مجمعة", SEARCH_MODE_OVERALL),
+]
+SEARCH_MODES_EN = [
+    ("Answers per scholar", SEARCH_MODE_PER_SCHOLAR),
+    ("Top answers overall", SEARCH_MODE_OVERALL),
 ]
 
-# Verdicts for individual fatwas
-VERDICTS = ["answers-it", "does-not-answer", "related-only", "unrelated"]
+# Verdicts for individual fatwas (binary relevance: answers-it or does-not-answer)
+VERDICTS = ["answers-it", "does-not-answer"]
 VERDICT_LABELS = {
     "answers-it": "Answers it",
     "does-not-answer": "Does not answer",
-    "related-only": "Related only",
-    "unrelated": "Unrelated",
     "unknown": "Unknown",
+}
+VERDICT_LABELS_AR = {
+    "answers-it": "تجيب على السؤال",
+    "does-not-answer": "لا تجيب",
+    "unknown": "غير محدد",
 }
 VERDICT_ICONS = {
     "answers-it": "✓",
     "does-not-answer": "✕",
-    "related-only": "≈",
-    "unrelated": "✕",
     "unknown": "?",
 }
 
 JEV_CRITERIA = {
     "answers-it": "The fatwa directly answers the user's question or gives the requested ruling/information.",
-    "related-only": "The fatwa is on a related topic but does not answer the specific question.",
-    "unrelated": "The fatwa does not meaningfully address the user's question.",
+    "does-not-answer": "The fatwa does not directly answer the question.",
 }
 
 # Verdicts for consensus classification
@@ -252,10 +274,16 @@ CONSENSUS_DISAGREE = "disagree"
 CONSENSUS_VERDICTS = [CONSENSUS_AGREE, CONSENSUS_PARTIAL, CONSENSUS_DISAGREE]
 
 CONSENSUS_LABELS = {
-    CONSENSUS_AGREE: "متفقون (Agreement)",
-    CONSENSUS_PARTIAL: "اتفاق مع تفصيل (Partial Agreement)",
-    CONSENSUS_DISAGREE: "مختلفون (Divergence / Disagreement)",
-    "unknown": "غير محدد (Indeterminate)",
+    CONSENSUS_AGREE: "Agreement",
+    CONSENSUS_PARTIAL: "Partial Agreement",
+    CONSENSUS_DISAGREE: "Divergence",
+    "unknown": "Indeterminate",
+}
+CONSENSUS_LABELS_AR = {
+    CONSENSUS_AGREE: "متفقون",
+    CONSENSUS_PARTIAL: "اتفاق مع تفصيل",
+    CONSENSUS_DISAGREE: "مختلفون",
+    "unknown": "غير محدد",
 }
 
 CONSENSUS_ICONS = {
@@ -268,7 +296,131 @@ CONSENSUS_ICONS = {
 JEV_CONSENSUS_CRITERIA = {
     CONSENSUS_AGREE: "All scholars agree or harmonize on the ruling.",
     CONSENSUS_PARTIAL: "Scholars agree generally but diverge on conditions, details, or specific exceptions.",
-    CONSENSUS_DISAGREE: "Scholars hold opposing or conflicting verdicts (e.g., halal vs haram).",
+    CONSENSUS_DISAGREE: "Scholars hold opposing or conflicting verdicts.",
+}
+
+# ---------------------------------------------------------------------------
+# Internationalization (Pure Arabic & Pure English — No Dual Language Mixing)
+# ---------------------------------------------------------------------------
+I18N: dict[str, dict[str, str]] = {
+    "ar": {
+        "title": "محرك البحث الفقهي — فتاوى كبار العلماء",
+        "tagline_fmt": "{n:,} فتوى مفهرسة عبر {scholars} من كبار العلماء · بحث دلالي + إعادة ترتيب بميزان v3 Turbo + فحص الصلة بلَيا",
+        "theme_light": "☀️ نهار",
+        "theme_dark": "🌙 ليل",
+        "lang_btn": "🌐 English",
+        "settings_btn": "⚙ الإعدادات",
+        "placeholder": "اكتب سؤالك هنا…",
+        "examples_label": "💡 أسئلة مقترحة للتجربة",
+        "examples_info": "اختر سؤالاً من القائمة لتعبئة حقل البحث وتجربة المحرك مباشرة",
+        "clear_btn": "مسح",
+        "adv_search_title": "⚙ خيارات البحث والعلماء",
+        "search_mode_label": "وضع البحث",
+        "search_mode_info": "اختر بين بحث مخصص لكل شيخ أو ترتيب مجمع",
+        "mode_per_scholar": "إجابات مخصصة لكل شيخ",
+        "mode_overall": "أفضل إجابات مجمعة",
+        "x_per_scholar_label": "عدد الإجابات لكل شيخ",
+        "show_n_label": "إجمالي النتائج المعروضة",
+        "scholars_label": "العلماء المشمولون في البحث",
+        "scholars_info": "اختر أي عدد من العلماء للبحث في فتاواهم",
+        "tab_results": "النتائج",
+        "tab_pipeline": "المسار الزمني",
+        "tab_debug": "التشخيص",
+        "empty_query": '<div class="fq-empty-sm">اكتب سؤالك في الأعلى للبدء في البحث.</div>',
+        "empty_results_title": "جاهز للبحث",
+        "empty_results_desc": "اكتب سؤالك الفقهي باللغة العربية أو بأي لغة أخرى للبحث في فتاوى كبار العلماء.",
+        "empty_failed": '<div class="fq-empty-sm">لم يعثر البحث على نتائج مطابقة.</div>',
+        "loading_query": '<div class="fq-loading"><div class="fq-spin"></div><span>جاري البحث وتحليل الفتاوى الفقهية…</span></div>',
+        "loading_results_title": "جاري الاسترجاع والتحليل…",
+        "sect_direct_answers": "🎯 إجابات مباشرة مؤكدة",
+        "sect_other_candidates": "🔍 نتائج إضافية ذات صلة",
+        "sect_all_candidates": "📋 نتائج البحث",
+        "best_match": "★ الأقرب للسؤال",
+        "question_label": "السؤال",
+        "full_answer": "نص الإجابة كاملاً",
+        "copy_answer": "نسخ الإجابة",
+        "copied": "تم النسخ!",
+        "original_link": "المصدر ↗",
+        "verdict_answers": "تجيب على السؤال",
+        "verdict_does_not_answer": "لا تجيب",
+        "verdict_unknown": "غير محدد",
+        "consensus_agree": "متفقون",
+        "consensus_partial": "اتفاق مع تفصيل",
+        "consensus_disagree": "مختلفون",
+        "summary_title": "ملخص ومقارنة أقوال العلماء",
+        "modal_up_title": "تأكيد صحة الإجابة",
+        "modal_up_desc": "هل هذه الفتوى تجيب مباشرة وبدقة على سؤالك؟ سيتم حفظها كإجابة معتمدة لتدريب نموذج لَيا.",
+        "modal_down_title": "الإبلاغ عن عدم دقة الإجابة",
+        "modal_down_desc": "هل هذه الفتوى لا تجيب على سؤالك أو صُنفت بالخطأ؟ سيتم حفظ تقريرك لتحسين وتدريب نموذج لَيا.",
+        "modal_comment_placeholder": "ملاحظة أو توضيح إضافي (اختياري)...",
+        "modal_submit": "إرسال التقييم",
+        "modal_cancel": "إلغاء",
+        "toast_success": "✅ جزاكم الله خيراً، تم تسجيل تقييمك بنجاح لدعم تدريب لَيا!",
+        "settings_title": "الإعدادات",
+        "settings_sub": "تخصيص نماذج الذكاء الاصطناعي وحدود الاسترجاع والتصفية.",
+        "filter_title": "تصفية النتائج بحسب الصلة",
+        "filter_info": "إظهار الفتاوى التي تطابق الأحكام المحددة فقط.",
+        "reset_btn": "استعادة الإعدادات الافتراضية",
+    },
+    "en": {
+        "title": "Fatwa Search — Multi-Scholar RAG",
+        "tagline_fmt": "{n:,} fatwas indexed across {scholars} scholars · semantic retrieval + Mizan v3 Turbo rerank + Laya AI verification",
+        "theme_light": "☀️ Light",
+        "theme_dark": "🌙 Dark",
+        "lang_btn": "🌐 العربية",
+        "settings_btn": "⚙ Settings",
+        "placeholder": "Type your question here…",
+        "examples_label": "💡 Suggested Questions",
+        "examples_info": "Select a question from the list to populate the search bar and test immediately",
+        "clear_btn": "Clear",
+        "adv_search_title": "⚙ Advanced Search & Scholars",
+        "search_mode_label": "Search Mode",
+        "search_mode_info": "Choose between independent search per scholar or overall top results",
+        "mode_per_scholar": "Answers per scholar",
+        "mode_overall": "Top answers overall",
+        "x_per_scholar_label": "Answers per scholar",
+        "show_n_label": "Total results to show",
+        "scholars_label": "Included Scholars / Sources",
+        "scholars_info": "Select any number of scholars to include in the search",
+        "tab_results": "Results",
+        "tab_pipeline": "Pipeline",
+        "tab_debug": "Debug",
+        "empty_query": '<div class="fq-empty-sm">Ask a question above to start searching.</div>',
+        "empty_results_title": "Ready to search",
+        "empty_results_desc": "Enter a question in Arabic or any language. Multiple scholar datasets are indexed and ready to compare.",
+        "empty_failed": '<div class="fq-empty-sm">Search produced no matching results.</div>',
+        "loading_query": '<div class="fq-loading"><div class="fq-spin"></div><span>Searching and synthesizing across scholarly fatwas…</span></div>',
+        "loading_results_title": "Retrieving & analyzing…",
+        "sect_direct_answers": "🎯 Verified Direct Answers",
+        "sect_other_candidates": "🔍 Other Relevant Candidates",
+        "sect_all_candidates": "📋 Search Results",
+        "best_match": "★ Best match",
+        "question_label": "Question",
+        "full_answer": "Full answer",
+        "copy_answer": "Copy answer",
+        "copied": "Copied!",
+        "original_link": "Original ↗",
+        "verdict_answers": "Answers it",
+        "verdict_does_not_answer": "Does not answer",
+        "verdict_unknown": "Unknown",
+        "consensus_agree": "Agreement",
+        "consensus_partial": "Partial Agreement",
+        "consensus_disagree": "Divergence",
+        "summary_title": "Comparative Summary of Scholarly Opinions",
+        "modal_up_title": "Confirm Direct Answer",
+        "modal_up_desc": "Does this fatwa directly and accurately answer your question? It will be saved as a verified answer to train Laya.",
+        "modal_down_title": "Report Inaccuracy",
+        "modal_down_desc": "Does this fatwa fail to answer your question or was it misclassified? Your report will help improve Laya.",
+        "modal_comment_placeholder": "Optional comment or explanation...",
+        "modal_submit": "Submit Feedback",
+        "modal_cancel": "Cancel",
+        "toast_success": "✅ Thank you! Your feedback has been recorded to train Laya.",
+        "settings_title": "Settings",
+        "settings_sub": "Configure AI features, models, retrieval pools and filters.",
+        "filter_title": "Filter Verdicts",
+        "filter_info": "Show only fatwas matching the selected verdicts.",
+        "reset_btn": "Reset to defaults",
+    },
 }
 
 
@@ -364,6 +516,113 @@ def usage_dict(prompt: Any = 0, completion: Any = 0, total: Any = None, cost: An
 
 
 # ---------------------------------------------------------------------------
+# Human-in-the-Loop Feedback & Active Learning for Laya
+# ---------------------------------------------------------------------------
+FEEDBACK_FILE_JSONL = "laya_user_feedback.jsonl"
+FEEDBACK_FILE_CSV = "laya_user_feedback.csv"
+FEEDBACK_FINETUNE_JSONL = "laya_user_annotations_finetune.jsonl"
+
+
+def get_feedback_count(data_dir: Path | str) -> int:
+    fb_path = Path(data_dir) / FEEDBACK_FILE_JSONL
+    if not fb_path.exists():
+        return 0
+    try:
+        with open(fb_path, "r", encoding="utf-8") as f:
+            return sum(1 for line in f if line.strip())
+    except Exception:
+        return 0
+
+
+def render_feedback_status(data_dir: Path | str, last_msg: str | None = None) -> str:
+    count = get_feedback_count(data_dir)
+    msg_html = f'<div class="fq-fb-msg success">{esc(last_msg)}</div>' if last_msg else ""
+    return (
+        f'<div class="fq-fb-status-bar">'
+        f'{msg_html}'
+        f'<div class="fq-fb-count">📊 إجمالي العينات التدريبية المسجلة: <b>{count:,}</b> عينة (تُجمع لإعادة تدريب لَيا)</div>'
+        f'</div>'
+    )
+
+
+def record_user_feedback(
+    data_dir: Path | str,
+    search_state: dict[str, Any],
+    selected_fid: str | None,
+    feedback_type: str,
+    user_note: str = "",
+) -> bool:
+    fb_dir = Path(data_dir)
+    fb_dir.mkdir(parents=True, exist_ok=True)
+
+    if not selected_fid or not search_state or not search_state.get("candidates"):
+        return False
+
+    try:
+        fid = int(selected_fid)
+    except (ValueError, TypeError):
+        return False
+
+    cand = search_state.get("candidates", {}).get(fid)
+    if not cand:
+        return False
+
+    user_query = search_state.get("query", "")
+    search_query = search_state.get("search_query", "")
+
+    timestamp = datetime.now(timezone.utc).isoformat()
+    entry = {
+        "timestamp": timestamp,
+        "query": user_query,
+        "search_query": search_query,
+        "fatwa_id": fid,
+        "scholar": cand.get("source", ""),
+        "title": cand.get("title", ""),
+        "answer_snippet": str(cand.get("answer", ""))[:500],
+        "feedback_type": feedback_type,  # "TP" (True Positive) or "FN" (Report/False Negative)
+        "laya_verdict": cand.get("laya_verdict"),
+        "laya_prob": cand.get("laya_prob"),
+        "reranker_score": cand.get("reranker_score"),
+        "user_note": (user_note or "").strip(),
+    }
+
+    # 1. JSONL log
+    with open(fb_dir / FEEDBACK_FILE_JSONL, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+    # 2. CSV log
+    csv_path = fb_dir / FEEDBACK_FILE_CSV
+    csv_exists = csv_path.exists()
+    pd.DataFrame([entry]).to_csv(csv_path, mode="a", header=not csv_exists, index=False, encoding="utf-8")
+
+    # 3. Direct format for Laya retraining: Both TP & FN represent training signal
+    target_choice = "answers-it" if feedback_type == "TP" else "does-not-answer"
+    laya_sample = {
+        "state": {
+            "user_query": user_query,
+            "scholar": cand.get("source", ""),
+            "fatwa_title": cand.get("title", ""),
+            "fatwa_answer": str(cand.get("answer", ""))[:3000],
+        },
+        "questions": {
+            "relevance": {
+                "type": "choice",
+                "choice": target_choice,
+            }
+        },
+        "metadata": {
+            "feedback_type": feedback_type,
+            "user_note": (user_note or "").strip(),
+            "timestamp": timestamp,
+        }
+    }
+    with open(fb_dir / FEEDBACK_FINETUNE_JSONL, "a", encoding="utf-8") as f:
+        f.write(json.dumps(laya_sample, ensure_ascii=False) + "\n")
+
+    return True
+
+
+# ---------------------------------------------------------------------------
 # Data loading
 # ---------------------------------------------------------------------------
 
@@ -450,6 +709,17 @@ def load_project_assets(data_dir: Path):
     missing_cols = required_cols - set(df.columns)
     if missing_cols:
         raise ValueError(f"CSV is missing required columns: {sorted(missing_cols)}")
+
+    # Restrict to INCLUDED_SCHOLARS, applying the SAME mask to df rows and embedding rows
+    # so positional alignment (df.iloc[i] <-> embeddings[i]) is preserved.
+    keep = df["source"].isin(INCLUDED_SCHOLARS).to_numpy()
+    if keep.any() and not keep.all():
+        n_before = len(df)
+        df = df.loc[keep].reset_index(drop=True)
+        embeddings = embeddings[torch.as_tensor(keep.copy())].contiguous()
+        print(f"Filtered to {INCLUDED_SCHOLARS}: {n_before:,} -> {len(df):,} fatwas.")
+    elif not keep.any():
+        print(f"Warning: none of INCLUDED_SCHOLARS found in corpus sources {sorted(df['source'].dropna().unique())}; keeping all rows.")
 
     if "categories" not in df.columns:
         df["categories"] = ""
@@ -1189,6 +1459,8 @@ class FatwaApp:
         filter_verdicts: list[str],
         gemini_api_key: str = "",
         openrouter_api_key: str = "",
+        lang: str = "ar",
+        progress_cb: Any = None,
     ):
         steps: list[Stat] = []
         errors: list[str] = []
@@ -1212,6 +1484,8 @@ class FatwaApp:
         # -- rewrite
         rewrite = None
         search_query = user_query
+        if progress_cb:
+            progress_cb(0.1, "Analyzing question..." if lang == "en" else "جاري تحليل السؤال...")
         if rewrite_enabled:
             t0 = time.perf_counter()
             try:
@@ -1232,6 +1506,9 @@ class FatwaApp:
         retrieved = pd.DataFrame()
         top_n = pd.DataFrame()
 
+        if progress_cb:
+            progress_cb(0.25, "Retrieving candidate fatwas..." if lang == "en" else "جاري استرجاع الفتاوى...")
+
         t0_retrieval = time.perf_counter()
         try:
             if search_mode == SEARCH_MODE_PER_SCHOLAR:
@@ -1239,6 +1516,9 @@ class FatwaApp:
                 pool_s = max(int(x_per_scholar), min(int(rerank_pool), 20))
                 per_scholar_cands = self.retrieve_top_k_per_scholar(search_query, selected_scholars, pool_s)
                 retrieval_time = time.perf_counter() - t0_retrieval
+
+                if progress_cb:
+                    progress_cb(0.5, "Reranking with Mizan v3 Turbo..." if lang == "en" else "جاري إعادة الترتيب بميزان v3 Turbo...")
 
                 t0_rerank = time.perf_counter()
                 all_retrieved_list = []
@@ -1262,13 +1542,16 @@ class FatwaApp:
                     top_n = pd.DataFrame()
 
                 steps.append(Stat("Embedding retrieval", retrieval_time, note=f"{len(retrieved)} candidates across {len(selected_scholars)} scholars"))
-                steps.append(Stat("Mizan rerank", rerank_time, note=f"{len(top_n)} selected ({x_per_scholar}/scholar)"))
+                steps.append(Stat("Mizan v3 Turbo rerank", rerank_time, note=f"{len(top_n)} selected ({x_per_scholar}/scholar)"))
 
             else:
                 # MODE 2: X answers ranked overall
                 retrieved = self.retrieve_top_k(search_query, int(retrieve_k), allowed_scholars=selected_scholars)
                 retrieval_time = time.perf_counter() - t0_retrieval
                 steps.append(Stat("Embedding retrieval", retrieval_time, note=f"{len(retrieved)} candidates"))
+
+                if progress_cb:
+                    progress_cb(0.5, "Reranking with Mizan v3 Turbo..." if lang == "en" else "جاري إعادة الترتيب بميزان v3 Turbo...")
 
                 t0_rerank = time.perf_counter()
                 pool = min(int(rerank_pool), len(retrieved))
@@ -1277,16 +1560,18 @@ class FatwaApp:
                     reranked = reranked[reranked["reranker_score"] >= float(min_rerank_score)].reset_index(drop=True)
                     reranked["rerank_rank"] = np.arange(1, len(reranked) + 1)
                 rerank_time = time.perf_counter() - t0_rerank
-                steps.append(Stat("Mizan rerank", rerank_time, note=f"over {pool}"))
+                steps.append(Stat("Mizan v3 Turbo rerank", rerank_time, note=f"over {pool}"))
                 top_n = reranked.head(max(1, int(show_n))).copy()
 
         except Exception as e:
             err = positional_error(e)
-            return self._fatal(user_query, steps, errors + [f"Retrieval/Rerank failed: {e}"], err)
+            return self._fatal(user_query, steps, errors + [f"Retrieval/Rerank failed: {e}"], err, lang=lang)
 
         # -- individual candidate judging
         judge_map: dict[int, FatwaJudgement] = {}
         if judge_enabled and len(top_n):
+            if progress_cb:
+                progress_cb(0.75, "Evaluating relevance with Laya..." if lang == "en" else "جاري فحص الصلة بنموذج لَيا...")
             t0 = time.perf_counter()
             try:
                 judge_map, usage = self.judge_candidates(
@@ -1306,6 +1591,8 @@ class FatwaApp:
         # -- consensus classification (Gemini or JEV)
         consensus_verdict: ConsensusVerdict | None = None
         if consensus_enabled and len(top_n) > 1:
+            if progress_cb:
+                progress_cb(0.88, "Classifying scholarly consensus..." if lang == "en" else "جاري تحليل التوافق الفقهي...")
             t0 = time.perf_counter()
             try:
                 consensus_verdict, usage = self.classify_consensus(
@@ -1326,6 +1613,8 @@ class FatwaApp:
         # -- comparative summary
         summary_text: str | None = None
         if summary_enabled and len(top_n) > 0:
+            if progress_cb:
+                progress_cb(0.94, "Synthesizing comparative summary..." if lang == "en" else "جاري تلخيص أقوال العلماء...")
             t0 = time.perf_counter()
             try:
                 summary_text, usage = self.summarize_opinions(summary_provider, summary_model, user_query, top_n)
@@ -1354,42 +1643,55 @@ class FatwaApp:
         else:
             display_rows = top_n
 
-        query_info = self._query_panel(user_query, search_query, rewrite, steps, errors, judge_map, judge_enabled, consensus_verdict)
-        stats_html = self._stats_html(steps)
+        query_info = self._query_panel(user_query, search_query, rewrite, steps, errors, judge_map, judge_enabled, consensus_verdict, lang=lang)
+        stats_html = self._stats_html(steps, lang=lang)
         retrieval_view = dataframe_for_display(retrieved)
         rerank_view = dataframe_for_display(top_n, judge_map=judge_map if judge_enabled else None)
 
         # Consensus Box
-        consensus_box_html = render_consensus_box(consensus_verdict, summary_text)
+        consensus_box_html = render_consensus_box(consensus_verdict, summary_text, lang=lang)
 
-        if len(display_rows):
-            cards = (consensus_box_html + "\n" if consensus_box_html else "") + "\n".join(
-                fatwa_card(row, judge_map.get(int(row.fatwa_id)) if judge_enabled else None, int(row.get("rerank_rank", idx + 1)))
-                for idx, (_, row) in enumerate(display_rows.iterrows())
-            )
-        else:
-            cards = (consensus_box_html + "\n" if consensus_box_html else "") + '<p class="empty">No candidates match the selected filter.</p>'
+        cards = render_results_cards(
+            display_rows,
+            judge_map=judge_map if judge_enabled else None,
+            judge_enabled=judge_enabled,
+            consensus_box_html=consensus_box_html,
+            lang=lang,
+        )
+
+        if progress_cb:
+            progress_cb(1.0, "Complete!" if lang == "en" else "اكتمل البحث!")
 
         error_text = "\n\n".join(errors)
         if errors:
             gr.Warning(error_modal_html(errors, user_query, steps), duration=None, title="Error — copy and send to the AI")
 
-        return query_info, stats_html, retrieval_view, rerank_view, cards, error_text
+        return query_info, stats_html, retrieval_view, rerank_view, cards, error_text, display_rows, judge_map, search_query
 
-    def _fatal(self, user_query, steps, errors, err):
+    def _fatal(self, user_query, steps, errors, err, lang="ar"):
         steps.append(Stat("Total", sum(s.seconds for s in steps if s.label != "Total"), note="aborted"))
         tb = traceback.format_exc() if err is None else err
         gr.Warning(error_modal_html(errors, user_query, steps, tb), duration=None, title="Error — copy and send to the AI")
-        query_info = self._query_panel(user_query, user_query, None, steps, errors, {}, False, None)
-        return query_info, self._stats_html(steps), pd.DataFrame(), pd.DataFrame(), "", "\n\n".join(errors) + "\n\n" + (tb or "")
+        query_info = self._query_panel(user_query, user_query, None, steps, errors, {}, False, None, lang=lang)
+        return (
+            query_info,
+            self._stats_html(steps, lang=lang),
+            pd.DataFrame(),
+            pd.DataFrame(),
+            "",
+            "\n\n".join(errors) + "\n\n" + (tb or ""),
+            pd.DataFrame(),
+            {},
+            user_query,
+        )
 
     # -- panels ------------------------------------------------------------
 
-    def _query_panel(self, user_query, search_query, rewrite, steps, errors, judge_map, judge_enabled, consensus_verdict):
-        return render_query_panel(user_query, search_query, rewrite, errors, judge_map, judge_enabled, consensus_verdict)
+    def _query_panel(self, user_query, search_query, rewrite, steps, errors, judge_map, judge_enabled, consensus_verdict, lang="ar"):
+        return render_query_panel(user_query, search_query, rewrite, errors, judge_map, judge_enabled, consensus_verdict, lang=lang)
 
-    def _stats_html(self, steps: list[Stat]) -> str:
-        return render_pipeline(steps)
+    def _stats_html(self, steps: list[Stat], lang="ar") -> str:
+        return render_pipeline(steps, lang=lang)
 
 
 @dataclass
@@ -1462,16 +1764,21 @@ def _fmt_conf(conf: Any) -> str:
     return esc(conf) if conf else "—"
 
 
-def render_consensus_box(consensus: ConsensusVerdict | None, summary: str | None) -> str:
+def render_consensus_box(consensus: ConsensusVerdict | None, summary: str | None, lang: str = "ar") -> str:
     if not consensus and not summary:
         return ""
 
     parts = []
     if consensus and consensus.consensus != "unknown":
         badge_cls = consensus_badge_class(consensus.consensus)
-        badge_lbl = CONSENSUS_LABELS.get(consensus.consensus, consensus.consensus)
+        if lang == "ar":
+            badge_lbl = CONSENSUS_LABELS_AR.get(consensus.consensus, consensus.consensus)
+        else:
+            badge_lbl = CONSENSUS_LABELS.get(consensus.consensus, consensus.consensus)
         icon = CONSENSUS_ICONS.get(consensus.consensus, "⚖")
-        conf_str = f" · confidence {_fmt_conf(consensus.confidence)}" if consensus.confidence is not None else ""
+        conf_str = f" · confidence {_fmt_conf(consensus.confidence)}" if (lang == "en" and consensus.confidence is not None) else (
+            f" · مستوى الثقة {_fmt_conf(consensus.confidence)}" if consensus.confidence is not None else ""
+        )
         parts.append(
             f'<div class="fq-consensus-head">'
             f'<span class="fq-badge {badge_cls}"><b>{icon}</b> {esc(badge_lbl)}</span>'
@@ -1486,7 +1793,7 @@ def render_consensus_box(consensus: ConsensusVerdict | None, summary: str | None
     if summary and summary.strip():
         parts.append(
             f'<div class="fq-summary-block">'
-            f'<div class="fq-label">ملخص ومقارنة أقوال العلماء (Comparative Summary)</div>'
+            f'<div class="fq-label">{I18N[lang]["summary_title"]}</div>'
             f'<div class="fq-summary-text fq-ar" dir="rtl">{esc(summary)}</div>'
             f'</div>'
         )
@@ -1496,26 +1803,32 @@ def render_consensus_box(consensus: ConsensusVerdict | None, summary: str | None
     return '<section class="fq-consensus-box">' + "".join(parts) + "</section>"
 
 
-def render_query_panel(user_query, search_query, rewrite, errors, judge_map, judge_enabled, consensus_verdict=None) -> str:
+def render_query_panel(
+    user_query, search_query, rewrite, errors, judge_map, judge_enabled, consensus_verdict=None, lang="ar"
+) -> str:
+    asked_lbl = "سألت" if lang == "ar" else "You asked"
+    searched_lbl = "تم البحث بصيغة" if lang == "ar" else "Searched as"
     rows = [
-        '<div class="fq-qrow"><span class="fq-qlabel">You asked</span>'
+        f'<div class="fq-qrow"><span class="fq-qlabel">{asked_lbl}</span>'
         f'<span class="fq-qtext" dir="auto">{esc(user_query)}</span></div>'
     ]
     if (search_query or "").strip() != (user_query or "").strip():
         rows.append(
-            '<div class="fq-qrow"><span class="fq-qlabel">Searched as</span>'
+            f'<div class="fq-qrow"><span class="fq-qlabel">{searched_lbl}</span>'
             f'<span class="fq-qtext fq-ar" dir="auto">{esc(search_query)}</span></div>'
         )
 
     chips = []
     if rewrite is not None:
         chips.append(f'<span class="fq-chip">{esc(rewrite.language)}</span>')
-        chips.append(f'<span class="fq-chip">{"rewritten" if rewrite.changed else "kept as is"}</span>')
+        rewrite_lbl = ("تمت إعادة الصياغة" if rewrite.changed else "كما هو") if lang == "ar" else ("rewritten" if rewrite.changed else "kept as is")
+        chips.append(f'<span class="fq-chip">{rewrite_lbl}</span>')
 
     if consensus_verdict and consensus_verdict.consensus != "unknown":
         cls_name = consensus_badge_class(consensus_verdict.consensus)
         icon = CONSENSUS_ICONS.get(consensus_verdict.consensus, "⚖")
-        chips.append(f'<span class="fq-pill {cls_name}">{icon} {CONSENSUS_LABELS.get(consensus_verdict.consensus, consensus_verdict.consensus)}</span>')
+        c_lbl = CONSENSUS_LABELS_AR.get(consensus_verdict.consensus, consensus_verdict.consensus) if lang == "ar" else CONSENSUS_LABELS.get(consensus_verdict.consensus, consensus_verdict.consensus)
+        chips.append(f'<span class="fq-pill {cls_name}">{icon} {c_lbl}</span>')
 
     if judge_enabled and judge_map:
         counts: dict[str, int] = {}
@@ -1523,25 +1836,28 @@ def render_query_panel(user_query, search_query, rewrite, errors, judge_map, jud
             counts[j.verdict] = counts.get(j.verdict, 0) + 1
         for v in VERDICTS:
             if counts.get(v):
+                v_lbl = VERDICT_LABELS_AR[v] if lang == "ar" else VERDICT_LABELS[v]
                 chips.append(
                     f'<span class="fq-pill {verdict_badge_class(v)}">'
-                    f"{VERDICT_ICONS[v]} {counts[v]} · {VERDICT_LABELS[v]}</span>"
+                    f"{VERDICT_ICONS[v]} {counts[v]} · {v_lbl}</span>"
                 )
     if chips:
         rows.append('<div class="fq-qchips">' + "".join(chips) + "</div>")
 
     if errors:
+        err_title = f"⚠ {len(errors)} مشكلة" if lang == "ar" else f"⚠ {len(errors)} issue{'s' if len(errors) != 1 else ''}"
+        err_hint = "تفاصيل الخطأ الكاملة في تبويب <b>التشخيص</b>." if lang == "ar" else "Full traceback is in the <b>Debug</b> tab."
         items = "".join(f"<li>{esc(e)}</li>" for e in errors)
         rows.append(
             '<div class="fq-alert" role="alert">'
-            f'<div class="fq-alert-title">⚠ {len(errors)} issue{"s" if len(errors) != 1 else ""}</div>'
+            f'<div class="fq-alert-title">{err_title}</div>'
             f"<ul>{items}</ul>"
-            '<div class="fq-alert-hint">Full traceback is in the <b>Debug</b> tab.</div></div>'
+            f'<div class="fq-alert-hint">{err_hint}</div></div>'
         )
     return '<section class="fq-query-panel">' + "".join(rows) + "</section>"
 
 
-def render_pipeline(steps: list[Stat]) -> str:
+def render_pipeline(steps: list[Stat], lang: str = "ar") -> str:
     real = [s for s in steps if s.label != "Total"]
     total = next((s for s in steps if s.label == "Total"), None)
     total_s = total.seconds if total else sum(s.seconds for s in real)
@@ -1551,16 +1867,23 @@ def render_pipeline(steps: list[Stat]) -> str:
     cost = sum(s.cost for s in real)
     aborted = bool(total and total.note == "aborted")
 
+    lbl_time = "إجمالي الوقت" if lang == "ar" else "Total time"
+    lbl_e2e = ("ملغى" if aborted else "كامل المعالجة") if lang == "ar" else ("aborted" if aborted else "end to end")
+    lbl_tokens = "التوكنز" if lang == "ar" else "Tokens"
+    lbl_tok_sub = f"{tok_in:,} مدخلات · {tok_out:,} مخرجات" if lang == "ar" else f"{tok_in:,} in · {tok_out:,} out"
+    lbl_cost = "التكلفة التقديرية" if lang == "ar" else "Est. cost"
+    lbl_cost_sub = "نداءات LLM فقط" if lang == "ar" else "LLM calls only"
+
     kpis = (
-        f'<div class="fq-kpi"><div class="fq-kpi-label">Total time</div>'
+        f'<div class="fq-kpi"><div class="fq-kpi-label">{lbl_time}</div>'
         f'<div class="fq-kpi-value">{total_s:.2f}<small>s</small></div>'
-        f'<div class="fq-kpi-sub">{"aborted" if aborted else "end to end"}</div></div>'
-        f'<div class="fq-kpi"><div class="fq-kpi-label">Tokens</div>'
+        f'<div class="fq-kpi-sub">{lbl_e2e}</div></div>'
+        f'<div class="fq-kpi"><div class="fq-kpi-label">{lbl_tokens}</div>'
         f'<div class="fq-kpi-value">{tok_in + tok_out:,}</div>'
-        f'<div class="fq-kpi-sub">{tok_in:,} in · {tok_out:,} out</div></div>'
-        f'<div class="fq-kpi"><div class="fq-kpi-label">Est. cost</div>'
+        f'<div class="fq-kpi-sub">{lbl_tok_sub}</div></div>'
+        f'<div class="fq-kpi"><div class="fq-kpi-label">{lbl_cost}</div>'
         f'<div class="fq-kpi-value">{f"${cost:.6f}" if cost > 0 else "—"}</div>'
-        f'<div class="fq-kpi-sub">LLM calls only</div></div>'
+        f'<div class="fq-kpi-sub">{lbl_cost_sub}</div></div>'
     )
 
     items = []
@@ -1604,33 +1927,20 @@ def error_modal_html(errors: list[str], user_query: str, steps: list[Stat], tb: 
     return "\n".join(body)
 
 
-def judge_box(judge: FatwaJudgement) -> str:
-    body = []
-    if judge.answer:
-        body.append(
-            f'<div class="fq-judge-answer fq-ar" dir="auto">{esc(judge.answer)}</div>'
-        )
-    if judge.explanation:
-        body.append(
-            f'<div class="fq-judge-exp fq-ar" dir="auto">{esc(judge.explanation)}</div>'
-        )
-    if not body and not judge.verdict:
-        return ""
-    return (
-        f'<section class="fq-judge">'
-        f'<div class="fq-judge-head">{verdict_badge(judge.verdict)}'
-        f'<span class="fq-conf">confidence {_fmt_conf(judge.confidence)}</span></div>'
-        f'{"".join(body)}</section>'
-    )
-
-
-def fatwa_card(row: pd.Series, judge: FatwaJudgement | None = None, rank: int = 0) -> str:
+def fatwa_card(
+    row: pd.Series,
+    judge: FatwaJudgement | None = None,
+    rank: int = 0,
+    is_true_label: bool = False,
+    lang: str = "ar",
+) -> str:
     categories = row.get("categories_list", []) or []
     tags = "".join(f'<span class="fq-cat fq-ar">{esc(cat)}</span>' for cat in categories)
 
     link = _safe_url(row.get("links", ""))
+    orig_text = I18N[lang]["original_link"]
     link_html = (
-        f'<a class="fq-btn primary" href="{esc(link)}" target="_blank" rel="noopener noreferrer">Original ↗</a>'
+        f'<a class="fq-btn primary" href="{esc(link)}" target="_blank" rel="noopener noreferrer">{esc(orig_text)}</a>'
         if link
         else ""
     )
@@ -1644,43 +1954,201 @@ def fatwa_card(row: pd.Series, judge: FatwaJudgement | None = None, rank: int = 
 
     edge = f" v-{verdict_badge_class(judge.verdict)}" if judge is not None else ""
     top = " top" if rank == 1 else ""
-    best = '<span class="fq-best">★ Best match</span>' if rank == 1 else ""
-    judge_html = judge_box(judge) if judge is not None else ""
-    open_attr = " open" if rank == 1 else ""
+    best = f'<span class="fq-best">{I18N[lang]["best_match"]}</span>' if rank == 1 else ""
+    open_attr = " open" if (is_true_label or rank == 1) else ""
+    tl_class = " is-true-label" if is_true_label else ""
 
     scholar_label = esc(row.get("source", "Scholar"))
+    fid = int(row['fatwa_id'])
+    title_esc = esc(row['title']).replace("'", "\\'").replace('"', "&quot;")
+
+    # Verdict badge (on the left of the sheikh's name in same round button style)
+    verdict_badge_html = ""
+    if judge is not None and judge.verdict:
+        v_cls = verdict_badge_class(judge.verdict)
+        v_icon = VERDICT_ICONS.get(judge.verdict, "•")
+        v_text = I18N[lang]["verdict_answers"] if judge.verdict == "answers-it" else (
+            I18N[lang]["verdict_does_not_answer"] if judge.verdict == "does-not-answer" else I18N[lang]["verdict_unknown"]
+        )
+        verdict_badge_html = f'<span class="fq-badge {v_cls}"><b>{v_icon}</b> {v_text}</span>'
+
+    scholar_badge_html = f'<span class="fq-scholar-badge">👤 {scholar_label}</span>'
+
+    q_label = I18N[lang]["question_label"]
+    ans_label = I18N[lang]["full_answer"]
+    copy_label = I18N[lang]["copy_answer"]
 
     return f"""
-    <article class="fq-card{top}{edge}">
+    <article class="fq-card{top}{edge}{tl_class}">
       <header class="fq-card-head">
         <div class="fq-rank">{r_rank}</div>
         <div class="fq-card-main">
           <h3 class="fq-card-title fq-ar" dir="rtl">{esc(row['title'])}</h3>
           <div class="fq-card-meta">
             {best}
-            <span class="fq-scholar-badge">👤 {scholar_label}</span>
+            {verdict_badge_html}
+            {scholar_badge_html}
             {tags}
           </div>
         </div>
+        <div class="fq-card-votes">
+          <button type="button" class="fq-vote-btn up" onclick="openFeedbackModal('{fid}', 'TP', '{title_esc}')" title="👍">👍</button>
+          <button type="button" class="fq-vote-btn down" onclick="openFeedbackModal('{fid}', 'FN', '{title_esc}')" title="👎">👎</button>
+        </div>
       </header>
-      {judge_html}
-      <div class="fq-qblock"><div class="fq-label">Question</div>
+      <div class="fq-qblock"><div class="fq-label">{q_label}</div>
         <div class="fq-ar fq-question" dir="rtl">{esc(row['question'])}</div></div>
       <details class="fq-det"{open_attr}>
-        <summary><span>Full answer</span></summary>
+        <summary><span>{ans_label}</span></summary>
         <div class="fq-ar fq-answer-text" dir="rtl">{esc(row['answer'])}</div>
       </details>
       <div class="fq-card-foot">
         <div class="fq-metrics">
-          <span class="fq-m" title="Fatwa id">id {int(row['fatwa_id'])}</span>
+          <span class="fq-m" title="Fatwa id">id {fid}</span>
           <span class="fq-m" title="Embedding cosine score and retrieval rank">embed {float(row['embedding_score']):.3f} <i>#{e_rank}</i></span>
           <span class="fq-m" title="Reranker score">rerank {float(row.get('reranker_score', 0.0)):.3f}</span>{move}
         </div>
         <div class="fq-actions">
-          <button type="button" class="fq-btn" onclick="{COPY_JS}">Copy answer</button>{link_html}
+          <button type="button" class="fq-btn" onclick="{COPY_JS}">{copy_label}</button>{link_html}
         </div>
       </div>
     </article>
+    """
+
+
+def render_results_cards(
+    display_rows: pd.DataFrame,
+    judge_map: dict[int, FatwaJudgement] | None = None,
+    judge_enabled: bool = False,
+    consensus_box_html: str = "",
+    lang: str = "ar",
+) -> str:
+    if display_rows is None or not len(display_rows):
+        return (consensus_box_html + "\n" if consensus_box_html else "") + f'<p class="empty">{I18N[lang]["empty_failed"]}</p>'
+
+    prefix = (consensus_box_html + "\n" if consensus_box_html else "")
+
+    if not judge_enabled or not judge_map:
+        cards_html = "\n".join(
+            fatwa_card(row, None, int(row.get("rerank_rank", idx + 1)), lang=lang)
+            for idx, (_, row) in enumerate(display_rows.iterrows())
+        )
+        return prefix + cards_html
+
+    # Partition into True Labels (answers-it) and Other Candidates
+    true_labels = []
+    other_candidates = []
+
+    for idx, (_, row) in enumerate(display_rows.iterrows()):
+        fid = int(row.fatwa_id)
+        j = judge_map.get(fid)
+        rank = int(row.get("rerank_rank", idx + 1))
+        if j and j.verdict == "answers-it":
+            true_labels.append((row, j, rank))
+        else:
+            other_candidates.append((row, j, rank))
+
+    sections = []
+
+    if true_labels:
+        # Group 1: Verified Direct Answers
+        hdr_1 = (
+            f'<div class="fq-section-header">'
+            f'<div class="fq-sect-title">{I18N[lang]["sect_direct_answers"]}</div>'
+            f'<span class="fq-badge good"><b>✓</b> {len(true_labels)}</span>'
+            f'</div>'
+        )
+        cards_1 = "\n".join(
+            fatwa_card(row, j, rank, is_true_label=True, lang=lang)
+            for row, j, rank in true_labels
+        )
+        sections.append(hdr_1 + "\n" + cards_1)
+
+        if other_candidates:
+            # Group 2: Other Candidates
+            hdr_2 = (
+                f'<div class="fq-section-header fq-sect-other">'
+                f'<div class="fq-sect-title">{I18N[lang]["sect_other_candidates"]}</div>'
+                f'<span class="fq-badge neutral">{len(other_candidates)}</span>'
+                f'</div>'
+            )
+            cards_2 = "\n".join(
+                fatwa_card(row, j, rank, is_true_label=False, lang=lang)
+                for row, j, rank in other_candidates
+            )
+            sections.append(hdr_2 + "\n" + cards_2)
+    else:
+        # 0 True Labels: show section header with count and all candidates
+        hdr_0 = (
+            f'<div class="fq-section-header">'
+            f'<div class="fq-sect-title">{I18N[lang]["sect_all_candidates"]}</div>'
+            f'<span class="fq-badge neutral">{len(display_rows)}</span>'
+            f'</div>'
+        )
+        cards_0 = "\n".join(
+            fatwa_card(row, judge_map.get(int(row.fatwa_id)), int(row.get("rerank_rank", idx + 1)), is_true_label=False, lang=lang)
+            for idx, (_, row) in enumerate(display_rows.iterrows())
+        )
+        sections.append(hdr_0 + "\n" + cards_0)
+
+    return prefix + "\n".join(sections)
+
+
+def render_empty_results(lang: str = "ar") -> str:
+    title = I18N[lang]["empty_results_title"]
+    desc = I18N[lang]["empty_results_desc"]
+    return (
+        f'<div class="fq-empty"><div class="fq-empty-title">{title}</div>'
+        f'<div class="fq-empty-text">{desc}</div></div>'
+    )
+
+
+def render_loading_results(lang: str = "ar") -> str:
+    title = I18N[lang]["loading_results_title"]
+    return (
+        f'<div class="fq-empty"><div class="fq-spin" style="margin:0 auto 12px"></div>'
+        f'<div class="fq-empty-title">{title}</div></div>'
+    )
+
+
+def render_brand_html(lang: str, n_fatwas: int, n_scholars: int) -> str:
+    title = I18N[lang]["title"]
+    tagline = I18N[lang]["tagline_fmt"].format(n=n_fatwas, scholars=n_scholars)
+    return (
+        f"<div class='fq-brand'>{BRAND_MARK}<div><div class='fq-name'>{title}</div>"
+        f"<div class='fq-tagline'>{tagline}</div></div></div>"
+    )
+
+
+def render_sidebar_header(lang: str) -> str:
+    title = I18N[lang]["settings_title"]
+    sub = I18N[lang]["settings_sub"]
+    return (
+        f"<div class='fq-side-title'>{title}</div>"
+        f"<div class='fq-side-sub'>{sub}</div>"
+    )
+
+
+def render_modal_html() -> str:
+    return """
+    <div id="fq-feedback-modal" class="fq-modal-overlay" style="display:none;" onclick="if(event.target===this)closeFeedbackModal()">
+      <div class="fq-modal-dialog">
+        <div class="fq-modal-head">
+          <h4 id="fq-modal-title"></h4>
+          <button type="button" class="fq-modal-close" onclick="closeFeedbackModal()">&times;</button>
+        </div>
+        <div class="fq-modal-body">
+          <p id="fq-modal-desc"></p>
+          <div id="fq-modal-fatwa-info" class="fq-modal-fatwa-info"></div>
+          <textarea id="fq-modal-comment" class="fq-modal-input" rows="3"></textarea>
+        </div>
+        <div class="fq-modal-foot">
+          <button type="button" class="fq-btn-cancel" onclick="closeFeedbackModal()" id="fq-modal-cancel-btn">إلغاء</button>
+          <button type="button" class="fq-btn primary" onclick="submitFeedbackModal()" id="fq-modal-submit-btn">إرسال التقييم</button>
+        </div>
+      </div>
+    </div>
+    <div id="fq-toast" class="fq-toast"></div>
     """
 
 
@@ -1790,10 +2258,10 @@ footer { display:none !important; }
 .fq-mark .gold { fill:var(--fq-gold); stroke:none; }
 .fq-name { font-weight:800; font-size:1.45rem; letter-spacing:-.02em; line-height:1.1; color:var(--fq-ink); }
 .fq-tagline { font-size:.82rem; color:var(--fq-muted); margin-top:3px; }
-#fq-settings-btn, #fq-theme-btn { flex:none !important; width:auto !important; min-width:0 !important; }
-#fq-settings-btn, #fq-theme-btn { border-radius:999px; background:var(--fq-surface); border:1px solid var(--fq-line);
+#fq-settings-btn, #fq-theme-btn, #fq-lang-btn { flex:none !important; width:auto !important; min-width:0 !important; }
+#fq-settings-btn, #fq-theme-btn, #fq-lang-btn { border-radius:999px; background:var(--fq-surface); border:1px solid var(--fq-line);
   color:var(--fq-ink) !important; font-weight:600; padding:9px 16px !important; font-size:.9rem !important; box-shadow:var(--fq-shadow); cursor:pointer; }
-#fq-settings-btn:hover, #fq-theme-btn:hover { border-color:var(--fq-accent); color:var(--fq-accent); }
+#fq-settings-btn:hover, #fq-theme-btn:hover, #fq-lang-btn:hover { border-color:var(--fq-accent); color:var(--fq-accent); }
 .fq-side-title { font-weight:800; font-size:1.35rem; color:var(--fq-ink); margin-bottom:4px; }
 .fq-side-sub { font-size:.85rem; color:var(--fq-muted); margin-bottom:14px; }
 
@@ -1820,17 +2288,18 @@ footer { display:none !important; }
 
 /* ---- generic ---- */
 .fq-flat, .fq-flat.block { border:none !important; background:transparent !important; box-shadow:none !important; padding:0 !important; }
+.fq-hidden { display: none !important; }
 .fq-chip { display:inline-block; padding:2px 10px; border-radius:999px; background:var(--fq-surface-2); color:var(--fq-muted);
   font-size:.76rem; font-weight:600; border:1px solid var(--fq-line); }
 .fq-chip.mono { font-family:var(--fq-mono); font-weight:400; font-size:.72rem; }
 .fq-chip.note.fail { background:var(--fq-bad-soft); color:var(--fq-bad); border-color:transparent; }
 .fq-chip.note.off { opacity:.8; }
 .fq-pill { display:inline-block; padding:3px 11px; border-radius:999px; font-size:.78rem; font-weight:700; }
-.fq-pill.good,.fq-badge.good { background:var(--fq-good-soft); color:var(--fq-good); }
-.fq-pill.warn,.fq-badge.warn { background:var(--fq-warn-soft); color:var(--fq-warn); }
-.fq-pill.bad,.fq-badge.bad { background:var(--fq-bad-soft); color:var(--fq-bad); }
-.fq-pill.neutral,.fq-badge.neutral { background:var(--fq-neutral-soft); color:var(--fq-neutral); }
-.fq-badge { display:inline-flex; align-items:center; gap:6px; padding:4px 14px 4px 10px; border-radius:999px; font-size:.85rem; font-weight:700; }
+.fq-pill.good,.fq-badge.good { background:var(--fq-good-soft); color:var(--fq-good); border:1px solid color-mix(in srgb, var(--fq-good) 30%, transparent); }
+.fq-pill.warn,.fq-badge.warn { background:var(--fq-warn-soft); color:var(--fq-warn); border:1px solid color-mix(in srgb, var(--fq-warn) 30%, transparent); }
+.fq-pill.bad,.fq-badge.bad { background:var(--fq-bad-soft); color:var(--fq-bad); border:1px solid color-mix(in srgb, var(--fq-bad) 30%, transparent); }
+.fq-pill.neutral,.fq-badge.neutral { background:var(--fq-neutral-soft); color:var(--fq-neutral); border:1px solid var(--fq-line); }
+.fq-badge { display:inline-flex; align-items:center; gap:6px; padding:3px 12px; border-radius:999px; font-size:.85rem; font-weight:700; }
 .fq-badge b { font-size:.95rem; }
 .fq-label { font-size:.72rem; font-weight:800; letter-spacing:.09em; text-transform:uppercase; color:var(--fq-muted); margin:0 0 6px; }
 
@@ -1843,7 +2312,7 @@ footer { display:none !important; }
 .fq-summary-text { font-size:1.2rem; line-height:1.8; color:var(--fq-ink); white-space:pre-line; }
 
 .fq-scholar-badge { display:inline-flex; align-items:center; gap:5px; padding:3px 12px; border-radius:999px;
-  background:var(--fq-accent-soft); color:var(--fq-accent-ink); font-size:.88rem; font-weight:800; border:1px solid color-mix(in srgb, var(--fq-accent) 30%, transparent); }
+  background:var(--fq-accent-soft); color:var(--fq-accent-ink); font-size:.85rem; font-weight:700; border:1px solid color-mix(in srgb, var(--fq-accent) 30%, transparent); }
 
 /* ---- query panel ---- */
 .fq-query-panel { margin:16px 2px 6px; padding:14px 18px; border-radius:16px; background:var(--fq-surface-2); border:1px solid var(--fq-line); }
@@ -1872,13 +2341,16 @@ footer { display:none !important; }
 .fq-card-title { margin:0 0 8px !important; font-size:1.55rem !important; line-height:1.55 !important; font-weight:700; color:var(--fq-ink); text-align:right; }
 .fq-card-meta { display:flex; flex-wrap:wrap; gap:6px 8px; align-items:center; }
 .fq-best { font-size:.74rem; font-weight:800; color:var(--fq-gold); background:var(--fq-gold-soft); padding:2px 10px; border-radius:999px; }
-.fq-cat { display:inline-block; padding:0 11px; border-radius:999px; background:var(--fq-accent-soft); color:var(--fq-accent-ink); font-size:1rem; line-height:1.7; }
+.fq-cat { display:inline-block; padding:0 11px; border-radius:999px; background:var(--fq-surface-2); color:var(--fq-muted); font-size:0.92rem; line-height:1.7; border:1px solid var(--fq-line); }
 
-.fq-judge { margin:16px 0 4px; padding:14px 18px 12px; border-radius:14px; background:var(--fq-surface-2); border:1px solid var(--fq-line); }
-.fq-judge-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
-.fq-conf { font-size:.78rem; font-weight:600; color:var(--fq-muted); text-transform:uppercase; letter-spacing:.05em; }
-.fq-judge-answer { font-size:1.25rem; line-height:1.7; color:var(--fq-ink); font-weight:700; margin-bottom:4px; text-align:right; }
-.fq-judge-exp { font-size:1.05rem; line-height:1.6; color:var(--fq-muted); text-align:right; }
+/* Card votes (pure icon buttons in corner) */
+.fq-card-votes { display:flex; gap:6px; align-items:center; margin-left:auto; flex-shrink:0; }
+.fq-vote-btn { width:36px; height:36px; border-radius:50%; border:1px solid var(--fq-line);
+  background:var(--fq-surface); color:var(--fq-ink); display:inline-flex; align-items:center; justify-content:center;
+  cursor:pointer; font-size:1.1rem; transition:all 0.2s cubic-bezier(0.4, 0, 0.2, 1); box-shadow:0 1px 2px rgba(0,0,0,0.04); }
+.fq-vote-btn:hover { transform:scale(1.12); }
+.fq-vote-btn.up:hover { background:var(--fq-good-soft); border-color:var(--fq-good); color:var(--fq-good); }
+.fq-vote-btn.down:hover { background:var(--fq-bad-soft); border-color:var(--fq-bad); color:var(--fq-bad); }
 
 .fq-qblock { margin:14px 0 10px; }
 .fq-question { font-size:1.2rem; line-height:1.65; color:var(--fq-ink); text-align:right; }
@@ -1921,6 +2393,63 @@ footer { display:none !important; }
 .fq-tbl th, .fq-tbl td { padding:10px 14px; border-bottom:1px solid var(--fq-line); }
 .fq-tbl th { background:var(--fq-surface-2); font-weight:800; text-transform:uppercase; font-size:.72rem; letter-spacing:.06em; color:var(--fq-muted); }
 .fq-tbl td.fq-ar { text-align:right; font-family:var(--fq-ar); font-size:1.15rem; }
+
+/* ---- results section headers (Claude's clean aesthetic) ---- */
+.fq-section-header { display:flex; align-items:center; gap:10px; margin:20px 0 12px; padding-bottom:6px; border-bottom:1px solid var(--fq-line); }
+.fq-section-header.fq-sect-other { margin-top:32px; }
+.fq-sect-title { font-size:1.15rem; font-weight:800; color:var(--fq-ink); margin:0; }
+
+/* ---- advanced search accordion ---- */
+#fq-adv-search { margin-top: 12px; background: transparent; border: 1px solid var(--fq-line); border-radius: 16px; }
+
+/* ---- feedback modal overlay & dialog ---- */
+.fq-modal-overlay {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.48); backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center;
+  z-index: 99999; animation: fq-fade-in 0.2s ease;
+}
+@keyframes fq-fade-in { from { opacity: 0; } to { opacity: 1; } }
+.fq-modal-dialog {
+  background: var(--fq-surface); border: 1.5px solid var(--fq-line); border-radius: 20px;
+  width: 90%; max-width: 460px; padding: 22px 24px; box-shadow: var(--fq-shadow);
+  animation: fq-pop-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes fq-pop-in { from { transform: scale(0.92); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.fq-modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.fq-modal-head h4 { margin: 0; font-size: 1.2rem; font-weight: 800; color: var(--fq-ink); }
+.fq-modal-close {
+  background: transparent; border: none; font-size: 1.6rem; line-height: 1;
+  cursor: pointer; color: var(--fq-muted); padding: 0 4px;
+}
+.fq-modal-close:hover { color: var(--fq-bad); }
+.fq-modal-body p { margin: 0 0 10px; font-size: 0.95rem; color: var(--fq-ink); line-height: 1.55; }
+.fq-modal-fatwa-info {
+  font-size: 0.84rem; color: var(--fq-muted); margin-bottom: 14px; padding: 8px 12px;
+  border-radius: 10px; background: var(--fq-surface-2); font-weight: 600;
+}
+.fq-modal-input {
+  width: 100%; min-height: 75px; padding: 10px 12px; border-radius: 12px;
+  border: 1px solid var(--fq-line); background: var(--fq-bg); color: var(--fq-ink);
+  font-family: var(--fq-sans); font-size: 0.92rem; resize: vertical; margin-bottom: 16px;
+  box-sizing: border-box;
+}
+.fq-modal-input:focus { outline: none; border-color: var(--fq-accent); }
+.fq-modal-foot { display: flex; justify-content: flex-end; gap: 10px; }
+.fq-btn-cancel {
+  border-radius: 999px; padding: 6px 16px; font-size: .85rem; font-weight: 600;
+  border: 1px solid var(--fq-line); background: var(--fq-surface); color: var(--fq-muted); cursor: pointer;
+}
+.fq-btn-cancel:hover { color: var(--fq-ink); border-color: var(--fq-ink); }
+
+/* Toast */
+.fq-toast {
+  position: fixed; bottom: 28px; right: 28px; z-index: 100000; padding: 12px 22px;
+  border-radius: 14px; background: var(--fq-accent); color: #ffffff; font-weight: 700;
+  font-size: 0.95rem; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  transform: translateY(120px); opacity: 0; pointer-events: none;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+}
+.fq-toast.show { transform: translateY(0); opacity: 1; }
 """
 
 BRAND_MARK = """
@@ -1937,7 +2466,9 @@ COPY_JS = """
   var txt = card ? card.querySelector('.fq-answer-text') : null;
   if(!txt) return;
   navigator.clipboard.writeText(txt.innerText.trim()).then(function(){
-    var old = btn.innerText; btn.innerText = 'Copied!';
+    var old = btn.innerText;
+    var lang = window._currentLang || 'ar';
+    btn.innerText = (lang === 'ar') ? 'تم النسخ!' : 'Copied!';
     setTimeout(function(){ btn.innerText = old; }, 1800);
   });
 })(this);
@@ -2010,13 +2541,122 @@ def build_ui(app: FatwaApp) -> gr.Blocks:
         ok = bool(os.getenv(env))
         return f'<span class="fq-key {"ok" if ok else "no"}">{"✓" if ok else "✕"} {name}</span>'
 
-    with gr.Blocks(title="Fatwa Search — Multi-Scholar RAG", theme=THEME, css=CSS) as demo:
+    with gr.Blocks(title="Fatwa Search — Multi-Scholar RAG") as demo:
+        gr.HTML(f"<style>{CSS}</style>", visible=False)
         sidebar_open = gr.State(False)
+        lang_state = gr.State("ar")
 
-        # ---- theme initialization script -----------------------------------
+        # ---- theme initialization & client actions script ------------------
         gr.HTML("""
         <script>
         (function() {
+            window._activeFeedbackFid = null;
+            window._activeFeedbackType = null;
+            window._currentLang = 'ar';
+
+            window._i18n = {
+              ar: {
+                modal_up_title: "تأكيد صحة الإجابة",
+                modal_up_desc: "هل هذه الفتوى تجيب مباشرة وبدقة على سؤالك؟ سيتم حفظها كإجابة معتمدة لتدريب نموذج لَيا.",
+                modal_down_title: "الإبلاغ عن عدم دقة الإجابة",
+                modal_down_desc: "هل هذه الفتوى لا تجيب على سؤالك أو صُنفت بالخطأ؟ سيتم حفظ تقريرك لتحسين وتدريب نموذج لَيا.",
+                modal_comment_placeholder: "ملاحظة أو توضيح إضافي (اختياري)...",
+                modal_submit: "إرسال التقييم",
+                modal_cancel: "إلغاء",
+                toast_success: "✅ جزاكم الله خيراً، تم تسجيل تقييمك بنجاح لدعم تدريب لَيا!",
+              },
+              en: {
+                modal_up_title: "Confirm Direct Answer",
+                modal_up_desc: "Does this fatwa directly and accurately answer your question? It will be saved as a verified answer to train Laya.",
+                modal_down_title: "Report Inaccuracy",
+                modal_down_desc: "Does this fatwa fail to answer your question or was it misclassified? Your report will help improve Laya.",
+                modal_comment_placeholder: "Optional comment or explanation...",
+                modal_submit: "Submit Feedback",
+                modal_cancel: "Cancel",
+                toast_success: "✅ Thank you! Your feedback has been recorded to train Laya.",
+              }
+            };
+
+            window.openFeedbackModal = function(fid, type, title) {
+              window._activeFeedbackFid = fid;
+              window._activeFeedbackType = type;
+              
+              var modal = document.getElementById('fq-feedback-modal');
+              var mTitle = document.getElementById('fq-modal-title');
+              var mDesc = document.getElementById('fq-modal-desc');
+              var mInfo = document.getElementById('fq-modal-fatwa-info');
+              var mComment = document.getElementById('fq-modal-comment');
+              var mSubmit = document.getElementById('fq-modal-submit-btn');
+              var mCancel = document.getElementById('fq-modal-cancel-btn');
+              
+              var lang = window._currentLang || 'ar';
+              var texts = window._i18n[lang] || window._i18n['ar'];
+              
+              if (type === 'TP') {
+                mTitle.innerText = texts.modal_up_title;
+                mDesc.innerText = texts.modal_up_desc;
+              } else {
+                mTitle.innerText = texts.modal_down_title;
+                mDesc.innerText = texts.modal_down_desc;
+              }
+              
+              mInfo.innerText = '#' + fid + ' - ' + (title || '');
+              mComment.value = '';
+              mComment.placeholder = texts.modal_comment_placeholder;
+              mSubmit.innerText = texts.modal_submit;
+              mCancel.innerText = texts.modal_cancel;
+              
+              if (modal) modal.style.display = 'flex';
+            };
+
+            window.closeFeedbackModal = function() {
+              var modal = document.getElementById('fq-feedback-modal');
+              if (modal) modal.style.display = 'none';
+              window._activeFeedbackFid = null;
+              window._activeFeedbackType = null;
+            };
+
+            window.submitFeedbackModal = function() {
+              var fid = window._activeFeedbackFid;
+              var type = window._activeFeedbackType;
+              var comment = (document.getElementById('fq-modal-comment') ? document.getElementById('fq-modal-comment').value : '');
+              
+              var payload = JSON.stringify({ fid: fid, type: type, comment: comment });
+              
+              var box = document.querySelector('#fq-fb-payload textarea, #fq-fb-payload input');
+              if (box) {
+                box.value = payload;
+                box.dispatchEvent(new Event('input', { bubbles: true }));
+                box.dispatchEvent(new Event('change', { bubbles: true }));
+              }
+              var trigger = document.getElementById('fq-fb-trigger');
+              if (trigger) {
+                var btn = trigger.tagName === 'BUTTON' ? trigger : (trigger.querySelector('button') || trigger);
+                if (btn) btn.click();
+              }
+              
+              closeFeedbackModal();
+              var lang = window._currentLang || 'ar';
+              var toastMsg = (window._i18n[lang] && window._i18n[lang].toast_success) || 'Saved!';
+              window.showToast(toastMsg);
+            };
+
+            window.showToast = function(msg) {
+              var toast = document.getElementById('fq-toast');
+              if (!toast) return;
+              toast.innerText = msg;
+              toast.classList.add('show');
+              setTimeout(function() {
+                toast.classList.remove('show');
+              }, 3500);
+            };
+
+            document.addEventListener('keydown', function(e) {
+              if (e.key === 'Escape') {
+                window.closeFeedbackModal();
+              }
+            });
+
             function updateTheme() {
                 var saved = null;
                 try { saved = localStorage.getItem('fq-theme-mode'); } catch(e) {}
@@ -2051,18 +2691,18 @@ def build_ui(app: FatwaApp) -> gr.Blocks:
 
         # ---- top bar -------------------------------------------------------
         with gr.Row(elem_id="fq-top"):
-            gr.HTML(
-                f"<div class='fq-brand'>{BRAND_MARK}<div><div class='fq-name'>Fatwa Search — Multi-Scholar RAG</div>"
-                f"<div class='fq-tagline'>{n_fatwas:,} fatwas indexed across {len(available_scholars)} scholarly sources · semantic retrieval + reranking + AI synthesis</div></div></div>",
+            brand_html = gr.HTML(
+                render_brand_html("ar", n_fatwas, len(available_scholars)),
                 elem_classes="fq-flat",
             )
+            lang_btn = gr.Button("🌐 English", elem_id="fq-lang-btn", size="sm", scale=0)
             theme_btn = gr.Button("☀️ Light", elem_id="fq-theme-btn", size="sm", scale=0)
-            settings_btn = gr.Button("⚙  Settings", elem_id="fq-settings-btn", size="sm", scale=0)
+            settings_btn = gr.Button(I18N["ar"]["settings_btn"], elem_id="fq-settings-btn", size="sm", scale=0)
 
         # ---- search box ----------------------------------------------------
         with gr.Group(elem_id="fq-search-wrap"):
             query = gr.Textbox(
-                placeholder="اكتب سؤالك هنا…  ·  or ask in any language",
+                placeholder=I18N["ar"]["placeholder"],
                 show_label=False,
                 container=False,
                 lines=1,
@@ -2073,57 +2713,62 @@ def build_ui(app: FatwaApp) -> gr.Blocks:
                 elem_id="fq-query",
             )
 
-        # ---- mode & scholar selectors --------------------------------------
-        with gr.Group(elem_id="fq-mode-panel"):
-            with gr.Row():
-                search_mode = gr.Radio(
-                    choices=SEARCH_MODES,
-                    value=SEARCH_MODE_PER_SCHOLAR,
-                    label="وضع البحث (Search Mode)",
-                    info="اختر بين بحث مخصص لكل شيخ على حدة أو ترتيب مجمع لكافة النتائج",
-                    scale=1,
-                )
-                with gr.Column(scale=1):
-                    x_per_scholar = gr.Slider(
-                        1, 5, value=DEFAULT_X_PER_SCHOLAR, step=1,
-                        label="عدد الإجابات لكل شيخ (Answers per scholar)",
-                        info="في وضع 'X إجابة لكل شيخ'",
-                        visible=True,
-                    )
-                    show_n = gr.Slider(
-                        1, 20, value=DEFAULT_SHOW_N, step=1,
-                        label="إجمالي النتائج المعروضة (Total results to show)",
-                        info="في وضع 'أفضل X إجابات مجمعة'",
-                        visible=False,
-                    )
-            with gr.Row():
-                selected_scholars = gr.CheckboxGroup(
-                    choices=available_scholars,
-                    value=available_scholars,
-                    label="العلماء المشمولون في البحث (Selected Scholars / Sources)",
-                    info="اختر أي عدد من العلماء للبحث في فتاواهم",
-                )
-
         # ---- example queries (dropdown) ------------------------------------
         with gr.Row(elem_id="fq-examples"):
             example_dropdown = gr.Dropdown(
                 choices=EXAMPLE_QUERIES,
                 value=None,
-                label="💡 أسئلة مقترحة للتجربة (Preset Questions)",
-                info="اختر سؤالاً من القائمة لتعبئة حقل البحث وتجربة المحرك مباشرة",
+                label=I18N["ar"]["examples_label"],
+                info=I18N["ar"]["examples_info"],
                 scale=5,
                 allow_custom_value=False,
                 filterable=True,
                 elem_classes="fq-ex-dropdown",
             )
-            clear_btn = gr.Button("مسح (Clear)", size="sm", elem_classes=["fq-ex", "fq-ex-clear"], scale=1)
+            clear_btn = gr.Button(I18N["ar"]["clear_btn"], size="sm", elem_classes=["fq-ex", "fq-ex-clear"], scale=1)
 
-        query_info = gr.HTML(EMPTY_QUERY, elem_classes="fq-flat")
+        # ---- mode & scholar selectors ----
+        with gr.Accordion(I18N["ar"]["adv_search_title"], open=False, elem_id="fq-adv-search") as adv_search:
+            with gr.Group(elem_id="fq-mode-panel"):
+                with gr.Row():
+                    search_mode = gr.Radio(
+                        choices=SEARCH_MODES,
+                        value=SEARCH_MODE_PER_SCHOLAR,
+                        label=I18N["ar"]["search_mode_label"],
+                        info=I18N["ar"]["search_mode_info"],
+                        scale=1,
+                    )
+                    with gr.Column(scale=1):
+                        x_per_scholar = gr.Slider(
+                            1, 5, value=DEFAULT_X_PER_SCHOLAR, step=1,
+                            label=I18N["ar"]["x_per_scholar_label"],
+                            visible=True,
+                        )
+                        show_n = gr.Slider(
+                            1, 20, value=DEFAULT_SHOW_N, step=1,
+                            label=I18N["ar"]["show_n_label"],
+                            visible=False,
+                        )
+                with gr.Row():
+                    selected_scholars = gr.CheckboxGroup(
+                        choices=available_scholars,
+                        value=available_scholars,
+                        label=I18N["ar"]["scholars_label"],
+                        info=I18N["ar"]["scholars_info"],
+                    )
+
+        query_info = gr.HTML(I18N["ar"]["empty_query"], elem_classes="fq-flat")
 
         # ---- results -------------------------------------------------------
         with gr.Tabs(elem_id="fq-tabs"):
             with gr.Tab("Results"):
-                results_html = gr.HTML(EMPTY_RESULTS, elem_classes="fq-flat")
+                results_html = gr.HTML(render_empty_results("ar"), elem_classes="fq-flat")
+                
+                # Hidden feedback trigger and payload for modal dialog submission
+                fb_payload = gr.Textbox(value="", elem_id="fq-fb-payload", elem_classes=["fq-hidden"])
+                fb_trigger = gr.Button("Submit Feedback", elem_id="fq-fb-trigger", elem_classes=["fq-hidden"])
+                gr.HTML(render_modal_html())
+
             with gr.Tab("Pipeline"):
                 stats_html = gr.HTML(EMPTY_PIPELINE, elem_classes="fq-flat")
             with gr.Tab("Debug"):
@@ -2147,15 +2792,14 @@ def build_ui(app: FatwaApp) -> gr.Blocks:
 
         # ---- settings drawer ----------------------------------------------
         with gr.Sidebar(label="Settings", open=False, position="right", width=420) as sidebar:
-            gr.HTML(
-                "<div class='fq-side-title'>Settings</div>"
-                "<div class='fq-side-sub'>Configure AI features, models, retrieval pools and filters.</div>",
+            sidebar_header = gr.HTML(
+                render_sidebar_header("ar"),
                 elem_classes="fq-flat",
             )
             with gr.Accordion("API Keys (Optional Overrides)", open=False):
                 gr.Markdown(
                     "**Zero API Keys Needed for Core Search & Verification!**\n\n"
-                    "• Semantic search (`Qwen 0.6B`), Cross-Encoder reranking (`Mizan V2`), and **Fine-Tuned Laya Judge** run 100% locally & free.\n"
+                    "• Semantic search (`Qwen 0.6B`), Cross-Encoder reranking (`Mizan v3 Turbo - ModernBERT`), and **Fine-Tuned Laya Judge** run 100% locally & free.\n"
                     "• API keys below are optional: provide them only if you wish to use Google Gemini or OpenRouter for Query Rewriting, LLM Judging, Consensus Classification, or Comparative Summary."
                 )
                 gemini_key_input = gr.Textbox(
@@ -2225,21 +2869,35 @@ def build_ui(app: FatwaApp) -> gr.Blocks:
                 min_rerank_score = gr.Number(value=None, label="Minimum rerank score", info="Leave blank for no filter.")
             with gr.Accordion("Filter verdicts", open=False):
                 filter_verdicts = gr.CheckboxGroup(
-                    [(VERDICT_LABELS[v], v) for v in VERDICTS], value=list(VERDICTS),
-                    show_label=False, info="Applies when judging is on.",
+                    choices=[(I18N["ar"]["verdict_answers"], "answers-it"), (I18N["ar"]["verdict_does_not_answer"], "does-not-answer")],
+                    value=list(VERDICTS),
+                    show_label=False,
+                    info=I18N["ar"]["filter_info"],
                 )
             with gr.Accordion("System", open=False):
+                gpu_desc = "None (CPU only)"
+                gpu_vram = "0 MB"
+                if torch.cuda.is_available():
+                    try:
+                        gpu_desc = torch.cuda.get_device_name(0)
+                        tot_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+                        gpu_vram = f"{tot_gb:.1f} GB"
+                    except Exception:
+                        gpu_desc = "CUDA Device"
                 gr.HTML(
                     f"<div class='fq-keys'>{key_chip(GEMINI_API_KEY_ENV, 'Gemini key')}"
                     f"{key_chip(OPENROUTER_API_KEY_ENV, 'OpenRouter key')}</div>"
                     "<dl class='fq-sys' style='margin-top:12px'>"
-                    f"<dt>Embedder</dt><dd>{esc(EMBEDDER_MODEL_NAME)} · {esc(emb_dev)}</dd>"
-                    f"<dt>Reranker</dt><dd>{esc(RERANKER_MODEL_NAME)} · {esc(rer_dev)}</dd>"
-                    f"<dt>Judge</dt><dd>{esc(DEFAULT_LAYA_MODEL.split('/')[-1])} · {esc(judge_dev)}</dd>"
+                    f"<dt>Detected GPU</dt><dd>{esc(gpu_desc)} ({esc(gpu_vram)} VRAM)</dd>"
+                    f"<dt>Embedder</dt><dd>{esc(EMBEDDER_MODEL_NAME)} · <b>{esc(emb_dev)}</b></dd>"
+                    f"<dt>Reranker</dt><dd><b>ALJIACHI/Mizan-Rerank-v3-Turbo</b> · <b>{esc(rer_dev)}</b></dd>"
+                    f"<dt>Judge</dt><dd>{esc(DEFAULT_LAYA_MODEL.split('/')[-1])} · <b>{esc(judge_dev)}</b></dd>"
                     f"<dt>Corpus</dt><dd>{n_fatwas:,} fatwas · {len(available_scholars)} scholars</dd></dl>",
                     elem_classes="fq-flat",
                 )
-            reset_btn = gr.Button("Reset to defaults", size="sm")
+            reset_btn = gr.Button(I18N["ar"]["reset_btn"], size="sm")
+
+        current_search_state = gr.State({})
 
         # ---- wiring --------------------------------------------------------
         inputs = [
@@ -2252,34 +2910,101 @@ def build_ui(app: FatwaApp) -> gr.Blocks:
             retrieve_k, rerank_pool, show_n,
             max_candidate_chars, min_rerank_score, filter_verdicts,
             gemini_key_input, openrouter_key_input,
+            lang_state,
         ]
-        outputs = [query_info, stats_html, retrieval_html, rerank_html, results_html, error_text]
+        outputs = [
+            query_info, stats_html, retrieval_html, rerank_html, results_html, error_text,
+            current_search_state,
+        ]
 
-        def search(*args):
-            if not (args[0] or "").strip():
-                yield ('<div class="fq-note">Please enter a question.</div>',
-                       EMPTY_PIPELINE, EMPTY_TABLE, EMPTY_TABLE, EMPTY_RESULTS, "")
+        def search(*args, progress=gr.Progress(track_tqdm=True)):
+            query_text = args[0]
+            lang = args[-1] if len(args) >= 25 else "ar"
+            
+            if not (query_text or "").strip():
+                yield (
+                    I18N[lang]["empty_query"],
+                    EMPTY_PIPELINE, EMPTY_TABLE, EMPTY_TABLE, render_empty_results(lang), "",
+                    {},
+                )
                 return
-            yield LOADING_QUERY, EMPTY_PIPELINE, EMPTY_TABLE, EMPTY_TABLE, LOADING_RESULTS, ""
-            q_info, stats, retrieved, reranked, cards, err = app.run_search(*args)
+
+            progress(0.05, desc="Analyzing question..." if lang == "en" else "جاري تحليل السؤال...")
+            yield (
+                I18N[lang]["loading_query"], EMPTY_PIPELINE, EMPTY_TABLE, EMPTY_TABLE, render_loading_results(lang), "",
+                {},
+            )
+
+            def progress_callback(pct, msg):
+                progress(pct, desc=msg)
+
+            search_args = list(args[:-1])
+            q_info, stats, retrieved, reranked, cards, err, display_rows, judge_map, search_query = app.run_search(
+                *search_args,
+                lang=lang,
+                progress_cb=progress_callback,
+            )
+
+            cands_dict = {}
+            if display_rows is not None and len(display_rows):
+                for idx, (_, row) in enumerate(display_rows.iterrows()):
+                    fid = int(row.fatwa_id)
+                    j_obj = judge_map.get(fid) if judge_map else None
+                    cands_dict[fid] = {
+                        "source": row.source,
+                        "title": row.title,
+                        "answer": row.answer,
+                        "reranker_score": float(row.get("reranker_score", 0.0)),
+                        "laya_verdict": j_obj.verdict if j_obj else None,
+                        "laya_prob": (j_obj.probabilities.get("answers-it") if (j_obj and j_obj.probabilities) else None),
+                    }
+            new_state = {
+                "query": query_text,
+                "search_query": search_query,
+                "candidates": cands_dict,
+            }
+
             yield (
                 q_info if str(q_info).lstrip().startswith("<") else f'<div class="fq-note">{esc(q_info)}</div>',
                 stats,
                 df_to_html(retrieved),
                 df_to_html(reranked),
-                cards or EMPTY_FAILED,
+                cards or f'<p class="empty">{I18N[lang]["empty_failed"]}</p>',
                 err,
+                new_state,
             )
 
-        run_kw = dict(fn=search, inputs=inputs, outputs=outputs, show_progress="hidden")
+        run_kw = dict(fn=search, inputs=inputs, outputs=outputs, show_progress="full")
         query.submit(**run_kw)
         example_dropdown.input(
             lambda q: q or "", inputs=example_dropdown, outputs=query, show_progress="hidden"
         ).then(**run_kw)
 
         clear_btn.click(
-            lambda: ("", None, EMPTY_QUERY, EMPTY_PIPELINE, EMPTY_TABLE, EMPTY_TABLE, EMPTY_RESULTS, ""),
+            lambda l: (
+                "", None, I18N[l]["empty_query"], EMPTY_PIPELINE, EMPTY_TABLE, EMPTY_TABLE, render_empty_results(l), "", {}
+            ),
+            inputs=[lang_state],
             outputs=[query, example_dropdown] + outputs,
+            show_progress="hidden",
+        )
+
+        def handle_modal_feedback(search_state: dict[str, Any], payload_str: str) -> None:
+            if not payload_str or not search_state:
+                return
+            try:
+                data = json.loads(payload_str)
+                fid = data.get("fid")
+                ftype = data.get("type", "TP")
+                comment = data.get("comment", "")
+                record_user_feedback(app.s.data_dir, search_state, str(fid), ftype, comment)
+            except Exception as e:
+                print(f"Error handling modal feedback: {e}")
+
+        fb_trigger.click(
+            fn=handle_modal_feedback,
+            inputs=[current_search_state, fb_payload],
+            outputs=[],
             show_progress="hidden",
         )
 
@@ -2299,6 +3024,69 @@ def build_ui(app: FatwaApp) -> gr.Blocks:
                     const b = btn.tagName === 'BUTTON' ? btn : (btn.querySelector('button') || btn);
                     b.innerText = isDarkNow ? "☀️ Light" : "🌙 Dark";
                 }
+            }""",
+        )
+
+        def toggle_language(current_l: str, current_q_info: str, current_res: str):
+            new_l = "en" if current_l == "ar" else "ar"
+            q_info_up = gr.update()
+            if not current_q_info or "fq-empty-sm" in current_q_info:
+                q_info_up = gr.update(value=I18N[new_l]["empty_query"])
+            res_up = gr.update()
+            if not current_res or "fq-empty-title" in current_res:
+                res_up = gr.update(value=render_empty_results(new_l))
+
+            return (
+                new_l,
+                gr.update(value=I18N[new_l]["lang_btn"]),
+                gr.update(value=render_brand_html(new_l, n_fatwas, len(available_scholars))),
+                gr.update(placeholder=I18N[new_l]["placeholder"], rtl=(new_l == "ar")),
+                gr.update(label=I18N[new_l]["examples_label"], info=I18N[new_l]["examples_info"]),
+                gr.update(value=I18N[new_l]["clear_btn"]),
+                gr.update(label=I18N[new_l]["adv_search_title"]),
+                gr.update(
+                    label=I18N[new_l]["search_mode_label"],
+                    info=I18N[new_l]["search_mode_info"],
+                    choices=SEARCH_MODES if new_l == "ar" else SEARCH_MODES_EN,
+                ),
+                gr.update(label=I18N[new_l]["x_per_scholar_label"]),
+                gr.update(label=I18N[new_l]["show_n_label"]),
+                gr.update(label=I18N[new_l]["scholars_label"], info=I18N[new_l]["scholars_info"]),
+                gr.update(value=I18N[new_l]["settings_btn"]),
+                gr.update(
+                    label=I18N[new_l]["filter_title"],
+                    info=I18N[new_l]["filter_info"],
+                    choices=[(I18N[new_l]["verdict_answers"], "answers-it"), (I18N[new_l]["verdict_does_not_answer"], "does-not-answer")],
+                ),
+                gr.update(value=render_sidebar_header(new_l)),
+                q_info_up,
+                res_up,
+            )
+
+        lang_btn.click(
+            fn=toggle_language,
+            inputs=[lang_state, query_info, results_html],
+            outputs=[
+                lang_state,
+                lang_btn,
+                brand_html,
+                query,
+                example_dropdown,
+                clear_btn,
+                adv_search,
+                search_mode,
+                x_per_scholar,
+                show_n,
+                selected_scholars,
+                settings_btn,
+                filter_verdicts,
+                sidebar_header,
+                query_info,
+                results_html,
+            ],
+            show_progress="hidden",
+            js="""() => {
+                window._currentLang = (window._currentLang === 'en') ? 'ar' : 'en';
             }""",
         )
 
@@ -2364,7 +3152,7 @@ def build_ui(app: FatwaApp) -> gr.Blocks:
             inputs=[rerank_pool, show_n], outputs=show_n,
         )
 
-        def reset_settings():
+        def reset_settings(lang: str = "ar"):
             return (
                 True, PROVIDER_GEMINI, default_model_for("rewrite", PROVIDER_GEMINI),
                 True, PROVIDER_LAYA, default_model_for("judge", PROVIDER_LAYA),
@@ -2376,6 +3164,7 @@ def build_ui(app: FatwaApp) -> gr.Blocks:
 
         reset_btn.click(
             reset_settings,
+            inputs=[lang_state],
             outputs=[
                 rewrite_enabled, rewrite_provider, rewrite_model,
                 judge_enabled, judge_provider, judge_model,
@@ -2497,12 +3286,17 @@ def main(argv: list[str] | None = None) -> int:
         except Exception:
             pass
 
-    demo.launch(
-        server_name=args.host,
-        server_port=args.port,
-        share=args.share,
-        inbrowser=False,
-    )
+    launch_kw = {
+        "server_name": args.host,
+        "server_port": args.port,
+        "share": args.share,
+        "inbrowser": False,
+    }
+    # Pass theme and css to launch if supported by Gradio version
+    try:
+        demo.launch(**launch_kw, theme=THEME, css=CSS)
+    except TypeError:
+        demo.launch(**launch_kw)
     return 0
 
 

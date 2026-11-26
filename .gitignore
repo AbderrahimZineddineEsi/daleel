@@ -35,3 +35,7 @@ upload_hf.py
 Thumbs.db
 .idea/
 .vscode/
+
+# Local artifacts (large bundles, tooling output)
+*.zip
+graphify-out/
