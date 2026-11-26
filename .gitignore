@@ -14,7 +14,6 @@ venv/
 data/*
 !data/.gitkeep
 !data/250_fatwa_relevance_questions.csv
-!data/250_fatwa_relevance_questions.docx
 !data/500_fatwa_relevance_questions.csv
 !data/200_big3_questions.csv
 !data/evaluation_candidates_100.json
@@ -22,7 +21,6 @@ data/*
 !data/evaluation_ground_truth.json
 !data/benchmark_predictions.json
 !data/binary_benchmark_predictions.json
-!data/sonnet_5_5_medium_10_instances.json
 !data/laya_finetune_dataset.jsonl
 !data/laya_finetune_binary_dataset.jsonl
 notebooks/data/
@@ -39,3 +37,4 @@ Thumbs.db
 # Local artifacts (large bundles, tooling output)
 *.zip
 graphify-out/
+_local/

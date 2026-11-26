@@ -552,6 +552,13 @@ def record_user_feedback(
     feedback_type: str,
     user_note: str = "",
 ) -> bool:
+    """Log a thumbs-up/down vote as a labeled example for retraining the judge.
+
+    ``feedback_type`` is the vote: "up" (the fatwa answers the question) or
+    "down" (it does not). The legacy codes "TP"/"FN" are accepted as aliases.
+    The vote is the ground-truth label; comparing it with the judge's verdict
+    gives the outcome (TP / FP / FN / TN) used to measure the judge.
+    """
     fb_dir = Path(data_dir)
     fb_dir.mkdir(parents=True, exist_ok=True)
 
@@ -567,6 +574,19 @@ def record_user_feedback(
     if not cand:
         return False
 
+    vote = {"TP": "up", "FN": "down"}.get(feedback_type, feedback_type)
+    if vote not in ("up", "down"):
+        return False
+    user_label = "answers-it" if vote == "up" else "does-not-answer"
+    laya_verdict = cand.get("laya_verdict")
+    outcome = None  # unknown when the judge did not score this card
+    if laya_verdict in ("answers-it", "does-not-answer"):
+        predicted_pos = laya_verdict == "answers-it"
+        actual_pos = user_label == "answers-it"
+        outcome = {(True, True): "TP", (True, False): "FP", (False, True): "FN", (False, False): "TN"}[
+            (predicted_pos, actual_pos)
+        ]
+
     user_query = search_state.get("query", "")
     search_query = search_state.get("search_query", "")
 
@@ -579,8 +599,10 @@ def record_user_feedback(
         "scholar": cand.get("source", ""),
         "title": cand.get("title", ""),
         "answer_snippet": str(cand.get("answer", ""))[:500],
-        "feedback_type": feedback_type,  # "TP" (True Positive) or "FN" (Report/False Negative)
-        "laya_verdict": cand.get("laya_verdict"),
+        "vote": vote,  # "up" / "down" as clicked by the user
+        "user_label": user_label,  # ground truth from the vote
+        "laya_verdict": laya_verdict,  # judge prediction at the time of the vote
+        "outcome": outcome,  # TP / FP / FN / TN of the judge vs the user label
         "laya_prob": cand.get("laya_prob"),
         "reranker_score": cand.get("reranker_score"),
         "user_note": (user_note or "").strip(),
@@ -595,8 +617,8 @@ def record_user_feedback(
     csv_exists = csv_path.exists()
     pd.DataFrame([entry]).to_csv(csv_path, mode="a", header=not csv_exists, index=False, encoding="utf-8")
 
-    # 3. Direct format for Laya retraining: Both TP & FN represent training signal
-    target_choice = "answers-it" if feedback_type == "TP" else "does-not-answer"
+    # 3. Laya retraining format: the user's label is the target
+    target_choice = user_label
     laya_sample = {
         "state": {
             "user_query": user_query,
@@ -611,7 +633,9 @@ def record_user_feedback(
             }
         },
         "metadata": {
-            "feedback_type": feedback_type,
+            "vote": vote,
+            "laya_verdict": laya_verdict,
+            "outcome": outcome,
             "user_note": (user_note or "").strip(),
             "timestamp": timestamp,
         }
@@ -1992,8 +2016,8 @@ def fatwa_card(
           </div>
         </div>
         <div class="fq-card-votes">
-          <button type="button" class="fq-vote-btn up" onclick="openFeedbackModal('{fid}', 'TP', '{title_esc}')" title="👍">👍</button>
-          <button type="button" class="fq-vote-btn down" onclick="openFeedbackModal('{fid}', 'FN', '{title_esc}')" title="👎">👎</button>
+          <button type="button" class="fq-vote-btn up" onclick="openFeedbackModal('{fid}', 'up', '{title_esc}')" title="👍">👍</button>
+          <button type="button" class="fq-vote-btn down" onclick="openFeedbackModal('{fid}', 'down', '{title_esc}')" title="👎">👎</button>
         </div>
       </header>
       <div class="fq-qblock"><div class="fq-label">{q_label}</div>
@@ -2592,7 +2616,7 @@ def build_ui(app: FatwaApp) -> gr.Blocks:
               var lang = window._currentLang || 'ar';
               var texts = window._i18n[lang] || window._i18n['ar'];
               
-              if (type === 'TP') {
+              if (type === 'up') {
                 mTitle.innerText = texts.modal_up_title;
                 mDesc.innerText = texts.modal_up_desc;
               } else {
@@ -2995,7 +3019,7 @@ def build_ui(app: FatwaApp) -> gr.Blocks:
             try:
                 data = json.loads(payload_str)
                 fid = data.get("fid")
-                ftype = data.get("type", "TP")
+                ftype = data.get("type", "up")
                 comment = data.get("comment", "")
                 record_user_feedback(app.s.data_dir, search_state, str(fid), ftype, comment)
             except Exception as e:
