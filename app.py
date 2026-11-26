@@ -326,7 +326,7 @@ I18N: dict[str, dict[str, str]] = {
         "tab_results": "النتائج",
         "tab_pipeline": "المسار الزمني",
         "tab_debug": "التشخيص",
-        "empty_query": '<div class="fq-empty-sm">اكتب سؤالك في الأعلى للبدء في البحث.</div>',
+        "empty_query": "",
         "empty_results_title": "جاهز للبحث",
         "empty_results_desc": "اكتب سؤالك الفقهي باللغة العربية أو بأي لغة أخرى للبحث في فتاوى كبار العلماء.",
         "empty_failed": '<div class="fq-empty-sm">لم يعثر البحث على نتائج مطابقة.</div>',
@@ -385,7 +385,7 @@ I18N: dict[str, dict[str, str]] = {
         "tab_results": "Results",
         "tab_pipeline": "Pipeline",
         "tab_debug": "Debug",
-        "empty_query": '<div class="fq-empty-sm">Ask a question above to start searching.</div>',
+        "empty_query": "",
         "empty_results_title": "Ready to search",
         "empty_results_desc": "Enter a question in Arabic or any language. Multiple scholar datasets are indexed and ready to compare.",
         "empty_failed": '<div class="fq-empty-sm">Search produced no matching results.</div>',
@@ -912,11 +912,18 @@ class FatwaApp:
         self.embedder.max_seq_length = EMBEDDER_MAX_SEQ_LENGTH
 
         print(f"Loading reranker ({RERANKER_MODEL_NAME}) on {settings.device_reranker}...")
+        # fp16 on CUDA halves the reranker's memory, which lets it share a
+        # 3 GB laptop GPU with the Laya judge.
+        reranker_kwargs = {"dtype": torch.float16} if settings.device_reranker == "cuda" else {}
         self.reranker = CrossEncoder(
             RERANKER_MODEL_NAME,
             max_length=RERANKER_MAX_LENGTH,
             device=settings.device_reranker,
             trust_remote_code=True,
+            model_kwargs=reranker_kwargs,
+            # ModernBERT otherwise may torch.compile parts of the model with Triton,
+            # which fails on pre-Volta GPUs (e.g. GTX 10xx, compute capability < 7.0).
+            config_kwargs={"reference_compile": False},
         )
         print("Models loaded.")
 
@@ -1437,14 +1444,26 @@ class FatwaApp:
         if not len(candidates):
             return candidates
         pairs = [[query, text] for text in candidates["embed_text"].astype(str).tolist()]
-        scores = np.asarray(
-            self.reranker.predict(pairs, batch_size=RERANKER_BATCH_SIZE, show_progress_bar=False)
-        ).reshape(-1)
+        scores = np.asarray(self._predict_with_oom_retry(pairs)).reshape(-1)
         reranked = candidates.copy()
         reranked["reranker_score"] = scores
         reranked = reranked.sort_values("reranker_score", ascending=False).reset_index(drop=True)
         reranked.insert(0, "rerank_rank", np.arange(1, len(reranked) + 1))
         return reranked
+
+    def _predict_with_oom_retry(self, pairs: list[list[str]]):
+        """Rerank, halving the batch size on CUDA out-of-memory instead of failing the search."""
+        batch_size = RERANKER_BATCH_SIZE
+        while True:
+            try:
+                with torch.inference_mode():
+                    return self.reranker.predict(pairs, batch_size=batch_size, show_progress_bar=False)
+            except torch.cuda.OutOfMemoryError:
+                torch.cuda.empty_cache()
+                if batch_size == 1:
+                    raise
+                batch_size = max(1, batch_size // 2)
+                print(f"Reranker hit CUDA OOM; retrying with batch_size={batch_size}")
 
     def _warmup(self):
         try:
@@ -1788,6 +1807,13 @@ def _fmt_conf(conf: Any) -> str:
     return esc(conf) if conf else "—"
 
 
+def render_markdown_safe(text: str) -> str:
+    """Render LLM markdown (headings, bold, lists) to HTML with raw HTML disabled."""
+    from markdown_it import MarkdownIt
+
+    return MarkdownIt("commonmark", {"html": False}).render(text or "")
+
+
 def render_consensus_box(consensus: ConsensusVerdict | None, summary: str | None, lang: str = "ar") -> str:
     if not consensus and not summary:
         return ""
@@ -1818,7 +1844,7 @@ def render_consensus_box(consensus: ConsensusVerdict | None, summary: str | None
         parts.append(
             f'<div class="fq-summary-block">'
             f'<div class="fq-label">{I18N[lang]["summary_title"]}</div>'
-            f'<div class="fq-summary-text fq-ar" dir="rtl">{esc(summary)}</div>'
+            f'<div class="fq-summary-text fq-ar fq-md" dir="rtl">{render_markdown_safe(summary)}</div>'
             f'</div>'
         )
 
@@ -1979,7 +2005,7 @@ def fatwa_card(
     edge = f" v-{verdict_badge_class(judge.verdict)}" if judge is not None else ""
     top = " top" if rank == 1 else ""
     best = f'<span class="fq-best">{I18N[lang]["best_match"]}</span>' if rank == 1 else ""
-    open_attr = " open" if (is_true_label or rank == 1) else ""
+    open_attr = " open" if rank == 1 else ""  # only the best match starts expanded
     tl_class = " is-true-label" if is_true_label else ""
 
     scholar_label = esc(row.get("source", "Scholar"))
@@ -2333,7 +2359,10 @@ footer { display:none !important; }
 .fq-consensus-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
 .fq-consensus-exp { font-size:1.15rem; line-height:1.7; color:var(--fq-ink); margin-bottom:14px; }
 .fq-summary-block { margin-top:14px; padding-top:14px; border-top:1px dashed var(--fq-line); }
-.fq-summary-text { font-size:1.2rem; line-height:1.8; color:var(--fq-ink); white-space:pre-line; }
+.fq-summary-text { font-size:1.15rem; line-height:1.8; color:var(--fq-ink); }
+.fq-md h1, .fq-md h2, .fq-md h3, .fq-md h4 { font-size:1.15rem; font-weight:700; margin:14px 0 6px; }
+.fq-md p { margin:0 0 8px; } .fq-md ul, .fq-md ol { margin:0 0 8px; padding-inline-start:22px; }
+.fq-md hr { border:0; border-top:1px dashed var(--fq-line); margin:12px 0; }
 
 .fq-scholar-badge { display:inline-flex; align-items:center; gap:5px; padding:3px 12px; border-radius:999px;
   background:var(--fq-accent-soft); color:var(--fq-accent-ink); font-size:.85rem; font-weight:700; border:1px solid color-mix(in srgb, var(--fq-accent) 30%, transparent); }
@@ -2743,7 +2772,6 @@ def build_ui(app: FatwaApp) -> gr.Blocks:
                 choices=EXAMPLE_QUERIES,
                 value=None,
                 label=I18N["ar"]["examples_label"],
-                info=I18N["ar"]["examples_info"],
                 scale=5,
                 allow_custom_value=False,
                 filterable=True,
@@ -2815,90 +2843,89 @@ def build_ui(app: FatwaApp) -> gr.Blocks:
                 )
 
         # ---- settings drawer ----------------------------------------------
+        # Layout: (1) the local judge, which is the only AI step on by default;
+        # (2) optional LLM features, off by default, each revealing its
+        # provider/model only when enabled; (3) retrieval knobs; (4) system info.
         with gr.Sidebar(label="Settings", open=False, position="right", width=420) as sidebar:
             sidebar_header = gr.HTML(
                 render_sidebar_header("ar"),
                 elem_classes="fq-flat",
             )
-            with gr.Accordion("API Keys (Optional Overrides)", open=False):
+            with gr.Accordion("1 · Relevance judge", open=True):
                 gr.Markdown(
-                    "**Zero API Keys Needed for Core Search & Verification!**\n\n"
-                    "• Semantic search (`Qwen 0.6B`), Cross-Encoder reranking (`Mizan v3 Turbo - ModernBERT`), and **Fine-Tuned Laya Judge** run 100% locally & free.\n"
-                    "• API keys below are optional: provide them only if you wish to use Google Gemini or OpenRouter for Query Rewriting, LLM Judging, Consensus Classification, or Comparative Summary."
+                    "Checks whether each result **directly answers** your question. "
+                    "The default is the fine-tuned Laya model, which runs locally: free, no API key."
                 )
-                gemini_key_input = gr.Textbox(
-                    value=os.getenv(GEMINI_API_KEY_ENV, ""),
-                    type="password",
-                    label="Gemini API Key",
-                    placeholder="AIzaSy... (leave blank to use env var)",
-                    info="Used when Provider is Gemini. Overrides GEMINI_API_KEY.",
-                )
-                openrouter_key_input = gr.Textbox(
-                    value=os.getenv(OPENROUTER_API_KEY_ENV, ""),
-                    type="password",
-                    label="OpenRouter API Key",
-                    placeholder="sk-or-v1-... (leave blank to use env var)",
-                    info="Used when Provider is OpenRouter. Overrides OPENROUTER_API_KEY.",
-                )
-            with gr.Accordion("Query rewrite", open=True):
-                rewrite_enabled = gr.Checkbox(
-                    value=bool(os.getenv(GEMINI_API_KEY_ENV) or os.getenv(OPENROUTER_API_KEY_ENV)),
-                    label="Rewrite / translate the question",
-                    info="Turns any language into a clean Arabic search query.",
-                )
-                rewrite_provider = gr.Radio(PROVIDERS, value=PROVIDER_GEMINI, label="Provider")
-                rewrite_model = gr.Dropdown(
-                    models_for("rewrite", PROVIDER_GEMINI), value=default_model_for("rewrite", PROVIDER_GEMINI),
-                    label="Model (Search or enter any slug)", allow_custom_value=True, filterable=True,
-                )
-            with gr.Accordion("Fatwa Verdict Judge", open=True):
-                judge_enabled = gr.Checkbox(
-                    value=True,
-                    label="Judge each result",
-                    info="Evaluates whether each fatwa directly answers the question (Free & local with Laya, or via LLM).",
-                )
-                judge_provider = gr.Radio(JUDGE_PROVIDERS, value=PROVIDER_LAYA, label="Provider")
-                judge_model = gr.Dropdown(
-                    models_for("judge", PROVIDER_LAYA), value=default_model_for("judge", PROVIDER_LAYA),
-                    label="Model (Search or enter any slug)", allow_custom_value=True, filterable=True,
-                )
-            with gr.Accordion("AI Consensus & Summary", open=True):
-                consensus_enabled = gr.Checkbox(
-                    value=bool(os.getenv(GEMINI_API_KEY_ENV) or os.getenv(OPENROUTER_API_KEY_ENV)),
-                    label="Consensus Classification",
-                    info="Classify whether scholars agree, partially agree, or disagree.",
-                )
-                consensus_provider = gr.Radio(PROVIDERS, value=PROVIDER_GEMINI, label="Consensus Provider")
-                consensus_model = gr.Dropdown(
-                    models_for("consensus", PROVIDER_GEMINI), value=default_model_for("consensus", PROVIDER_GEMINI),
-                    label="Consensus Model (Search or enter any slug)", allow_custom_value=True, filterable=True,
-                )
-                summary_enabled = gr.Checkbox(
-                    value=bool(os.getenv(GEMINI_API_KEY_ENV) or os.getenv(OPENROUTER_API_KEY_ENV)),
-                    label="Comparative Summary",
-                    info="Generates an Arabic synthesis comparing what the scholars say.",
-                )
-                summary_provider = gr.Radio(PROVIDERS, value=PROVIDER_GEMINI, label="Summary Provider")
-                summary_model = gr.Dropdown(
-                    models_for("summary", PROVIDER_GEMINI), value=default_model_for("summary", PROVIDER_GEMINI),
-                    label="Summary Model (Search or enter any slug)", allow_custom_value=True, filterable=True,
-                )
-            with gr.Accordion("Retrieval & Thresholds", open=False):
-                retrieve_k = gr.Slider(5, MAX_RETRIEVE_K, value=DEFAULT_RETRIEVE_K, step=1,
-                                       label="Candidates to retrieve", info="Raw embedding top-K")
-                rerank_pool = gr.Slider(1, DEFAULT_RETRIEVE_K, value=DEFAULT_RERANK_POOL, step=1,
-                                        label="Candidates to rerank")
-                max_candidate_chars = gr.Slider(500, 8000, value=DEFAULT_MAX_CANDIDATE_CHARS, step=250,
-                                                label="Judge text limit")
-                min_rerank_score = gr.Number(value=None, label="Minimum rerank score", info="Leave blank for no filter.")
-            with gr.Accordion("Filter verdicts", open=False):
+                judge_enabled = gr.Checkbox(value=True, label="Judge each result")
+                with gr.Group() as judge_opts:
+                    judge_provider = gr.Radio(JUDGE_PROVIDERS, value=PROVIDER_LAYA, label="Judge")
+                    judge_model = gr.Dropdown(
+                        models_for("judge", PROVIDER_LAYA), value=default_model_for("judge", PROVIDER_LAYA),
+                        label="Model", allow_custom_value=True, filterable=True,
+                    )
                 filter_verdicts = gr.CheckboxGroup(
                     choices=[(I18N["ar"]["verdict_answers"], "answers-it"), (I18N["ar"]["verdict_does_not_answer"], "does-not-answer")],
                     value=list(VERDICTS),
-                    show_label=False,
+                    label="Show results judged as",
                     info=I18N["ar"]["filter_info"],
                 )
-            with gr.Accordion("System", open=False):
+
+            with gr.Accordion("2 · Optional AI features (API key needed)", open=False):
+                gr.Markdown(
+                    "All **off by default**. Each one calls a cloud LLM (Gemini or OpenRouter), "
+                    "so it needs an API key and adds a few seconds and a small cost per search."
+                )
+                rewrite_enabled = gr.Checkbox(
+                    value=False,
+                    label="Rewrite / translate the question",
+                    info="Turns any language or dialect into a clean Arabic search query.",
+                )
+                with gr.Group(visible=False) as rewrite_opts:
+                    rewrite_provider = gr.Radio(PROVIDERS, value=PROVIDER_GEMINI, label="Provider")
+                    rewrite_model = gr.Dropdown(
+                        models_for("rewrite", PROVIDER_GEMINI), value=default_model_for("rewrite", PROVIDER_GEMINI),
+                        label="Model", allow_custom_value=True, filterable=True,
+                    )
+                consensus_enabled = gr.Checkbox(
+                    value=False,
+                    label="Scholar consensus",
+                    info="Labels whether the scholars agree, partially agree, or disagree.",
+                )
+                with gr.Group(visible=False) as consensus_opts:
+                    consensus_provider = gr.Radio(PROVIDERS, value=PROVIDER_GEMINI, label="Provider")
+                    consensus_model = gr.Dropdown(
+                        models_for("consensus", PROVIDER_GEMINI), value=default_model_for("consensus", PROVIDER_GEMINI),
+                        label="Model", allow_custom_value=True, filterable=True,
+                    )
+                summary_enabled = gr.Checkbox(
+                    value=False,
+                    label="Comparative summary",
+                    info="Writes an Arabic summary comparing what each scholar said.",
+                )
+                with gr.Group(visible=False) as summary_opts:
+                    summary_provider = gr.Radio(PROVIDERS, value=PROVIDER_GEMINI, label="Provider")
+                    summary_model = gr.Dropdown(
+                        models_for("summary", PROVIDER_GEMINI), value=default_model_for("summary", PROVIDER_GEMINI),
+                        label="Model", allow_custom_value=True, filterable=True,
+                    )
+                with gr.Accordion("API keys", open=False):
+                    gr.Markdown("Leave blank to use `GEMINI_API_KEY` / `OPENROUTER_API_KEY` from your `.env`.")
+                    gemini_key_input = gr.Textbox(
+                        value="", type="password", label="Gemini API key", placeholder="AIza…",
+                    )
+                    openrouter_key_input = gr.Textbox(
+                        value="", type="password", label="OpenRouter API key", placeholder="sk-or-v1-…",
+                    )
+
+            with gr.Accordion("3 · Retrieval", open=False):
+                retrieve_k = gr.Slider(5, MAX_RETRIEVE_K, value=DEFAULT_RETRIEVE_K, step=1,
+                                       label="Candidates to retrieve", info="Top-K from the embedding search.")
+                rerank_pool = gr.Slider(1, DEFAULT_RETRIEVE_K, value=DEFAULT_RERANK_POOL, step=1,
+                                        label="Candidates to rerank", info="How many of those the cross-encoder rescores.")
+                max_candidate_chars = gr.Slider(500, 8000, value=DEFAULT_MAX_CANDIDATE_CHARS, step=250,
+                                                label="Judge text limit", info="Characters of each fatwa sent to the judge.")
+                min_rerank_score = gr.Number(value=None, label="Minimum rerank score", info="Leave blank for no filter.")
+            with gr.Accordion("4 · System", open=False):
                 gpu_desc = "None (CPU only)"
                 gpu_vram = "0 MB"
                 if torch.cuda.is_available():
@@ -3065,7 +3092,7 @@ def build_ui(app: FatwaApp) -> gr.Blocks:
                 gr.update(value=I18N[new_l]["lang_btn"]),
                 gr.update(value=render_brand_html(new_l, n_fatwas, len(available_scholars))),
                 gr.update(placeholder=I18N[new_l]["placeholder"], rtl=(new_l == "ar")),
-                gr.update(label=I18N[new_l]["examples_label"], info=I18N[new_l]["examples_info"]),
+                gr.update(label=I18N[new_l]["examples_label"]),
                 gr.update(value=I18N[new_l]["clear_btn"]),
                 gr.update(label=I18N[new_l]["adv_search_title"]),
                 gr.update(
@@ -3134,20 +3161,20 @@ def build_ui(app: FatwaApp) -> gr.Blocks:
 
         # Dependent controls
         rewrite_enabled.change(
-            lambda e: (gr.update(interactive=e), gr.update(interactive=e)),
-            inputs=rewrite_enabled, outputs=[rewrite_provider, rewrite_model], show_progress="hidden",
+            lambda e: gr.update(visible=e),
+            inputs=rewrite_enabled, outputs=rewrite_opts, show_progress="hidden",
         )
         judge_enabled.change(
-            lambda e: (gr.update(interactive=e), gr.update(interactive=e)),
-            inputs=judge_enabled, outputs=[judge_provider, judge_model], show_progress="hidden",
+            lambda e: gr.update(visible=e),
+            inputs=judge_enabled, outputs=judge_opts, show_progress="hidden",
         )
         consensus_enabled.change(
-            lambda e: (gr.update(interactive=e), gr.update(interactive=e)),
-            inputs=consensus_enabled, outputs=[consensus_provider, consensus_model], show_progress="hidden",
+            lambda e: gr.update(visible=e),
+            inputs=consensus_enabled, outputs=consensus_opts, show_progress="hidden",
         )
         summary_enabled.change(
-            lambda e: (gr.update(interactive=e), gr.update(interactive=e)),
-            inputs=summary_enabled, outputs=[summary_provider, summary_model], show_progress="hidden",
+            lambda e: gr.update(visible=e),
+            inputs=summary_enabled, outputs=summary_opts, show_progress="hidden",
         )
 
         rewrite_provider.change(
@@ -3178,10 +3205,10 @@ def build_ui(app: FatwaApp) -> gr.Blocks:
 
         def reset_settings(lang: str = "ar"):
             return (
-                True, PROVIDER_GEMINI, default_model_for("rewrite", PROVIDER_GEMINI),
+                False, PROVIDER_GEMINI, default_model_for("rewrite", PROVIDER_GEMINI),
                 True, PROVIDER_LAYA, default_model_for("judge", PROVIDER_LAYA),
-                True, PROVIDER_GEMINI, default_model_for("consensus", PROVIDER_GEMINI),
-                True, PROVIDER_GEMINI, default_model_for("summary", PROVIDER_GEMINI),
+                False, PROVIDER_GEMINI, default_model_for("consensus", PROVIDER_GEMINI),
+                False, PROVIDER_GEMINI, default_model_for("summary", PROVIDER_GEMINI),
                 DEFAULT_RETRIEVE_K, DEFAULT_RERANK_POOL, DEFAULT_SHOW_N,
                 DEFAULT_MAX_CANDIDATE_CHARS, None, list(VERDICTS),
             )

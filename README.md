@@ -8,7 +8,14 @@ A retrieval pipeline over **39,646 Arabic fatwas** from four major Saudi scholar
 [![HF Dataset](https://img.shields.io/badge/%F0%9F%A4%97%20dataset-binbaz__fatwas__rag-yellow)](https://huggingface.co/datasets/ZenoAbderrahim/binbaz_fatwas_rag)
 [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/AbderrahimZineddineEsi/BinBaz-RAG/blob/main/notebooks/02_run_on_colab.ipynb)
 
-![Arabic query with judged results](docs/images/hero.png)
+![Search results judged by the local Laya model](docs/images/demo-results.png)
+
+<details>
+<summary>With the optional AI features on (scholar consensus + comparative summary)</summary>
+
+![Results with AI consensus and comparative summary](docs/images/demo-ai-summary.png)
+
+</details>
 
 ## Highlights
 
@@ -85,6 +92,8 @@ The final model improved the most on Ibn Baz, the largest and hardest part of th
 
 ### 2. Choosing the teacher LLM
 
+This is a self-funded project, so the budget for API calls was small. That's why I only compared small, low-cost models ("mini", "flash" and "lite" tiers) rather than frontier ones, and why the end goal was a local model that costs nothing to run.
+
 Before generating thousands of labels, I hand-labeled 100 candidates (14–16 per scholar) and benchmarked seven LLM judges against them ([`notebooks/04_evaluation_and_benchmarking.ipynb`](notebooks/04_evaluation_and_benchmarking.ipynb)). This was a 3-class task: answers it / related only / unrelated.
 
 | Judge | Accuracy | Macro F1 | Projected cost per 10K labels |
@@ -97,7 +106,7 @@ Before generating thousands of labels, I hand-labeled 100 candidates (14–16 pe
 | Gemini 2.5 Flash | 79% | 0.640 | $2.67 |
 | Base Laya (local, zero-shot) | 49% | 0.393 | $0.00 |
 
-GPT-4o Mini was both the most accurate and one of the cheapest, so it became the teacher. The weak zero-shot Laya score is the reason I fine-tuned it.
+GPT-4o Mini was both the most accurate and one of the cheapest, so it became the teacher. Labeling all 10,044 training pairs with it cost about $1.10. The weak zero-shot Laya score is the reason I fine-tuned it.
 
 ### 3. Reranker upgrade: Mizan V2 → v3-Turbo
 
@@ -172,14 +181,14 @@ On first launch, `app.py` downloads the corpus and embeddings (~170 MB) from the
 | Model | Params | Approx. VRAM |
 | :--- | :---: | :---: |
 | Qwen3-Embedding-0.6B | 0.6B | ~2.8 GB |
-| Mizan-Rerank-v3-Turbo | 149M | ~0.6 GB |
+| Mizan-Rerank-v3-Turbo | 149M | ~0.3 GB (fp16 on GPU) |
 | Laya fatwa-relevance judge | 322M | ~1.3 GB |
 
 ```bash
-# 2–4 GB GPU (e.g. GTX 1050): embedder on CPU, the rest on GPU (~1.9 GB VRAM)
+# 3–4 GB GPU (e.g. GTX 1050): embedder on CPU, the rest on GPU (~2.6 GB used in testing)
 python app.py --embedder-device cpu --reranker-device cuda --judge-device cuda
 
-# 6 GB+ GPU or Colab T4: everything on GPU (~4.7 GB VRAM)
+# 6 GB+ GPU or Colab T4: everything on GPU
 python app.py --embedder-device cuda --reranker-device cuda --judge-device cuda
 
 # CPU only
