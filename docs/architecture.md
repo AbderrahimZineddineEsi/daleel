@@ -88,5 +88,5 @@ When multiple scholars' fatwas are retrieved, users frequently want to know: *Do
 ## 5. Hardware & Scalability
 
 - **Unified In-Memory Index:** At ~40K × 1,024 floats, the normalized float32 embedding matrix is about 160 MB. A single matrix multiply over it takes milliseconds, so an external vector database would add complexity without a speed benefit at this scale.
-- **Reranker Memory Footprint:** `ALJIACHI/Mizan-Rerank-v3-Turbo` (149M-parameter ModernBERT) runs in fp16 on GPU (roughly 0.3 GB), so it fits next to the Laya judge on a 3 GB laptop GPU such as a GTX 1050.
+- **Reranker Memory Footprint:** `ALJIACHI/Mizan-Rerank-v3-Turbo` (149M-parameter ModernBERT) runs in fp16 on GPUs with fast half precision (compute capability 7.0+, e.g. T4). Older cards such as the GTX 1050 run fp16 several times slower than fp32, so there it stays in fp32 (~0.6 GB of weights) with a batch size of 4 (~1 GB peak), which still fits next to the Laya judge on a 3 GB card.
 - **Graceful Asset Fallback:** The application seamlessly falls back to the Bin Baz base corpus if the new multi-scholar `.pt` embeddings have not yet been downloaded, ensuring zero-downtime development and testing.

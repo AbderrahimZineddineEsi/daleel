@@ -102,6 +102,7 @@ RERANKER_MODEL_NAME = "ALJIACHI/Mizan-Rerank-v3-Turbo"
 EMBEDDER_MAX_SEQ_LENGTH = 1024
 RERANKER_MAX_LENGTH = 2048
 RERANKER_BATCH_SIZE = 16
+RERANKER_SMALL_GPU_BATCH_SIZE = 4  # GPUs under 6 GB
 
 # ModernBERT compatibility on older GPUs (Pascal capability < 7.0 such as GTX 1050/1060)
 if hasattr(torch, "_dynamo"):
@@ -900,9 +901,18 @@ class FatwaApp:
         self.embedder.max_seq_length = EMBEDDER_MAX_SEQ_LENGTH
 
         print(f"Loading reranker ({RERANKER_MODEL_NAME}) on {settings.device_reranker}...")
-        # fp16 on CUDA halves the reranker's memory, which lets it share a
-        # 3 GB laptop GPU with the Laya judge.
-        reranker_kwargs = {"dtype": torch.float16} if settings.device_reranker == "cuda" else {}
+        # fp16 only where the GPU has fast half-precision math (compute capability
+        # 7.0+, e.g. T4). Pascal cards like the GTX 1050 run fp16 far slower than
+        # fp32 (measured: 35 s vs 5 s for 62 pairs), so they stay in fp32 and use
+        # a small batch to fit next to the Laya judge on a 3 GB card.
+        reranker_kwargs = {}
+        self.reranker_batch_size = RERANKER_BATCH_SIZE
+        if settings.device_reranker == "cuda" and torch.cuda.is_available():
+            props = torch.cuda.get_device_properties(0)
+            if props.major >= 7:
+                reranker_kwargs = {"dtype": torch.float16}
+            if props.total_memory < 6 * 1024**3:
+                self.reranker_batch_size = RERANKER_SMALL_GPU_BATCH_SIZE
         self.reranker = CrossEncoder(
             RERANKER_MODEL_NAME,
             max_length=RERANKER_MAX_LENGTH,
@@ -1441,7 +1451,7 @@ class FatwaApp:
 
     def _predict_with_oom_retry(self, pairs: list[list[str]]):
         """Rerank, halving the batch size on CUDA out-of-memory instead of failing the search."""
-        batch_size = RERANKER_BATCH_SIZE
+        batch_size = self.reranker_batch_size
         while True:
             try:
                 with torch.inference_mode():

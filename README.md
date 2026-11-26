@@ -16,7 +16,7 @@ A retrieval pipeline over **39,646 Arabic fatwas** from four major Saudi scholar
     <td width="32%" valign="top"><img src="docs/images/demo-settings.png" alt="Settings drawer"></td>
   </tr>
   <tr>
-    <td valign="top"><b>Pipeline tab</b>: per-stage timings for the same query. The 53 s rerank comes from running on a 3 GB GTX 1050 laptop GPU (80 long fatwas, up to 2,048 tokens each), a hardware limit rather than a property of the pipeline.</td>
+    <td valign="top"><b>Pipeline tab</b>: per-stage timings for the same query: about 7 s end to end on a 3 GB GTX 1050 laptop GPU, reranking 80 candidates (20 per scholar).</td>
     <td valign="top"><b>Settings</b>: the local judge is on by default; cloud LLM features are off until you enable them.</td>
   </tr>
 </table>
@@ -192,7 +192,7 @@ On first launch, `app.py` downloads the corpus and embeddings (~170 MB) from the
 | Model | Params | Approx. VRAM |
 | :--- | :---: | :---: |
 | Qwen3-Embedding-0.6B | 0.6B | ~2.8 GB |
-| Mizan-Rerank-v3-Turbo | 149M | ~0.3 GB (fp16 on GPU) |
+| Mizan-Rerank-v3-Turbo | 149M | ~0.6 GB weights in fp32, ~1 GB peak at batch 4 (fp16 on newer GPUs) |
 | Laya fatwa-relevance judge | 322M | ~1.3 GB |
 
 ```bash
