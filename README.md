@@ -1,4 +1,4 @@
-# Fatwa-RAG: Multi-Scholar Islamic Semantic Search with a Fine-Tuned Relevance Judge
+# Daleel: Multi-scholar RAG with a fine-tuned relevance judge
 
 A retrieval pipeline over **39,646 Arabic fatwas** from four major Saudi scholars and institutions. You ask a question in any language; the system retrieves candidate rulings with dense embeddings, reranks them with a cross-encoder, and has a **fine-tuned 322M-parameter classifier** decide which fatwas actually answer the question. It runs fully locally with no API keys; LLMs are optional add-ons.
 
@@ -6,7 +6,7 @@ A retrieval pipeline over **39,646 Arabic fatwas** from four major Saudi scholar
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![HF Model](https://img.shields.io/badge/%F0%9F%A4%97%20model-laya--multilingual--fatwa--relevance-purple)](https://huggingface.co/ZenoAbderrahim/laya-multilingual-fatwa-relevance)
 [![HF Dataset](https://img.shields.io/badge/%F0%9F%A4%97%20dataset-binbaz__fatwas__rag-yellow)](https://huggingface.co/datasets/ZenoAbderrahim/binbaz_fatwas_rag)
-[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/AbderrahimZineddineEsi/BinBaz-RAG/blob/main/notebooks/02_run_on_colab.ipynb)
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/AbderrahimZineddineEsi/daleel/blob/main/notebooks/02_run_on_colab.ipynb)
 
 ![Search results for "ما حكم التأمين على السيارات؟" (is car insurance permissible?): Laya judges 6 of 8 fatwas as answering it and 2 as not](docs/images/demo-results.png)
 
@@ -168,7 +168,7 @@ Text cleaning is deliberately light: encoding repair, NFKC normalization, remova
 
 ### Option A: Google Colab (no setup)
 
-1. Open [`notebooks/02_run_on_colab.ipynb`](https://colab.research.google.com/github/AbderrahimZineddineEsi/BinBaz-RAG/blob/main/notebooks/02_run_on_colab.ipynb).
+1. Open [`notebooks/02_run_on_colab.ipynb`](https://colab.research.google.com/github/AbderrahimZineddineEsi/daleel/blob/main/notebooks/02_run_on_colab.ipynb).
 2. **Runtime → Change runtime type → T4 GPU**.
 3. Optional: add `GEMINI_API_KEY` or `OPENROUTER_API_KEY` to **Colab Secrets** to enable the LLM features.
 4. Run all cells. The app starts with a public `*.gradio.live` link.
@@ -176,8 +176,8 @@ Text cleaning is deliberately light: encoding repair, NFKC normalization, remova
 ### Option B: Run locally
 
 ```bash
-git clone https://github.com/AbderrahimZineddineEsi/BinBaz-RAG.git
-cd BinBaz-RAG
+git clone https://github.com/AbderrahimZineddineEsi/daleel.git
+cd daleel
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
